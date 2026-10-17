@@ -36,7 +36,10 @@ class GetTemperatureTool(llm.Tool):
         llm_context: llm.LLMContext,
     ) -> JsonObjectType:
         self.calls.append(tool_input.tool_args)
-        return {"temperature": 21, "unit": "°C"}
+        data = {"temperature": 21, "unit": "°C"}
+        if hasattr(llm, "ToolResult"):  # Home Assistant 2026.10 and newer
+            return llm.ToolResult(data=data)
+        return data
 
 
 class FakeAPI(llm.API):

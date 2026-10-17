@@ -16,6 +16,6 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/jacdk777/home-assistant-alfred/issues",
-  "requirements": ["anthropic>=0.125.0", "voluptuous-openapi>=0.2.0"],
-  "version": "0.2.0"
+  "requirements": ["anthropic>=0.125.0"],
+  "version": "0.2.1"
 }

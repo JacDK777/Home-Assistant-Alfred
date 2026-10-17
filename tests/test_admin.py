@@ -65,7 +65,8 @@ async def _api(hass: HomeAssistant, user: MockUser | None) -> llm.APIInstance:
 
 
 async def _call(api: llm.APIInstance, name: str, **args: Any) -> Any:
-    return await api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args))
+    result = await api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args))
+    return getattr(result, "data", result)
 
 
 async def test_admin_tools_only_for_admins(

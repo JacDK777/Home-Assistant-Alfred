@@ -7,7 +7,6 @@ import json
 from typing import Any, Literal
 
 import anthropic
-from voluptuous_openapi import convert
 
 from homeassistant.components import conversation
 from homeassistant.const import CONF_LLM_HASS_API, MATCH_ALL
@@ -17,6 +16,12 @@ from homeassistant.helpers import device_registry as dr, llm
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AlfredConfigEntry
+
+try:
+    import probatio
+except ImportError:  # Home Assistant 2026.8 and older use voluptuous
+    probatio = None
+
 from .const import (
     CACHE_CONTROL,
     CONF_CHAT_MODEL,
@@ -54,10 +59,30 @@ def _format_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
 ) -> dict[str, Any]:
     """Convert a Home Assistant LLM tool into an Anthropic tool definition."""
+    if probatio is not None:
+        try:
+            schema = probatio.to_openapi(
+                tool.parameters,
+                custom_serializer=custom_serializer,
+                openapi_version="3.1.0",
+            )
+        except TypeError:  # probatio before 0.13 has no openapi_version
+            schema = probatio.to_openapi(
+                tool.parameters, custom_serializer=custom_serializer
+            )
+    else:
+        from voluptuous_openapi import convert
+
+        schema = convert(tool.parameters, custom_serializer=custom_serializer)
     return {
         "name": tool.name,
         "description": tool.description or "",
-        "input_schema": convert(tool.parameters, custom_serializer=custom_serializer),
+        # The API rejects these at the top level of an input schema.
+        "input_schema": {
+            key: value
+            for key, value in schema.items()
+            if key not in ("oneOf", "anyOf", "allOf")
+        },
     }
 
 
@@ -113,16 +138,18 @@ def _convert_chat_log(
         if isinstance(content, conversation.UserContent):
             append("user", [{"type": "text", "text": content.content}])
         elif isinstance(content, conversation.ToolResultContent):
-            append(
-                "user",
-                [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": content.tool_call_id,
-                        "content": json.dumps(content.tool_result),
-                    }
-                ],
-            )
+            block: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": content.tool_call_id,
+            }
+            if (result := getattr(content, "result", None)) is not None:
+                # Home Assistant 2026.10 and newer wrap results in llm.ToolResult.
+                block["content"] = json.dumps(result.data)
+                if result.error:
+                    block["is_error"] = True
+            else:
+                block["content"] = json.dumps(content.tool_result)
+            append("user", [block])
         elif isinstance(content, conversation.AssistantContent):
             if isinstance(content.native, list):
                 blocks = _echoable_blocks(content.native)
