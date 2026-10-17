@@ -66,6 +66,14 @@ def ename(e):
     return norm(e.get("name") or e.get("original_name") or e["entity_id"].split(".", 1)[1])
 
 
+SWAPPABLE = ("switch", "light")
+
+
+def gang(e):
+    m = re.search(r"(\d+)$", e["entity_id"]) or re.search(r"(\d+)$", ename(e))
+    return m and m.group(1)
+
+
 def dev_matches(cdev, ldev):
     if tuya_ids(cdev) & tuya_ids(ldev):
         return True
@@ -77,9 +85,13 @@ for eid in tuya_used:
     ce = by_id[eid]
     dom = eid.split(".")[0]
     cdev = devs.get(ce.get("device_id"))
-    cands = [l for l in local if l["entity_id"].split(".")[0] == dom
-             and dev_matches(cdev, devs.get(l.get("device_id")))]
+    on_dev = [l for l in local if dev_matches(cdev, devs.get(l.get("device_id")))]
+    cands = [l for l in on_dev if l["entity_id"].split(".")[0] == dom]
     note = ""
+    if not cands and dom in SWAPPABLE:  # Tuya Local often makes switch gangs into lights
+        cands = [l for l in on_dev if l["entity_id"].split(".")[0] in SWAPPABLE]
+        if cands:
+            note = "  [switch/light swap, check]"
     if not cands:  # fall back to whole-name match across all Tuya Local entities
         full = lambda e, d: norm(f"{dname(d)} {ename(e)}")
         target = full(ce, cdev)
@@ -88,8 +100,13 @@ for eid in tuya_used:
         if scored and scored[0][0] >= 0.85:
             cands, note = [scored[0][1]], f"  [name match {scored[0][0]:.0%}, check]"
     if len(cands) > 1:
-        scored = sorted(cands, key=lambda l: -difflib.SequenceMatcher(None, ename(ce), ename(l)).ratio())
-        cands, note = scored[:1], f"  [picked from {len(scored)} on device, check]"
+        num = gang(ce)
+        same = [l for l in cands if num and gang(l) == num]
+        if len(same) == 1:
+            cands, note = same, note or f"  [gang {num} of {len(cands)}]"
+        else:
+            scored = sorted(cands, key=lambda l: -difflib.SequenceMatcher(None, ename(ce), ename(l)).ratio())
+            cands, note = scored[:1], f"  [picked from {len(scored)} on device, check]"
     if cands:
         le = cands[0]
         mapping[eid] = le["entity_id"]
