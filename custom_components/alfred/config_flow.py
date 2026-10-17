@@ -36,11 +36,14 @@ from . import async_create_client
 from .const import (
     CONF_CHAT_MODEL,
     CONF_EFFORT,
+    CONF_GITHUB_REPO,
+    CONF_GITHUB_TOKEN,
     CONF_MAX_TOKENS,
     CONF_PROMPT,
     CONF_WEB_SEARCH,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EFFORT,
+    DEFAULT_GITHUB_REPO,
     DEFAULT_MAX_TOKENS,
     DEFAULT_NAME,
     DEFAULT_PROMPT,
@@ -203,6 +206,18 @@ class AlfredOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_WEB_SEARCH, default=options[CONF_WEB_SEARCH]
                 ): BooleanSelector(),
+                vol.Optional(
+                    CONF_GITHUB_TOKEN,
+                    description={"suggested_value": options.get(CONF_GITHUB_TOKEN)},
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                vol.Optional(
+                    CONF_GITHUB_REPO,
+                    description={
+                        "suggested_value": options.get(
+                            CONF_GITHUB_REPO, DEFAULT_GITHUB_REPO
+                        )
+                    },
+                ): TextSelector(),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
