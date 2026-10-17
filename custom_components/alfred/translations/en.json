@@ -36,14 +36,18 @@
           "chat_model": "Model",
           "effort": "Effort",
           "max_tokens": "Maximum response tokens",
-          "web_search": "Allow web search"
+          "web_search": "Allow web search",
+          "github_token": "GitHub token",
+          "github_repo": "GitHub repository"
         },
         "data_description": {
           "prompt": "Alfred's personality and rules. Supports templates.",
-          "llm_hass_api": "Lets Alfred read and control the entities you have exposed to Assist.",
+          "llm_hass_api": "Assist lets Alfred read and control the entities you have exposed. Alfred admin adds tools for the error log, automations, scripts and bug reports; it only works for administrators.",
           "chat_model": "Haiku is fastest and cheapest; Sonnet and Opus handle more complex requests.",
           "effort": "How hard Claude thinks before answering. Low keeps voice replies snappy.",
-          "web_search": "Lets Alfred look things up online (news, opening hours, general knowledge). Billed per search."
+          "web_search": "Lets Alfred look things up online (news, opening hours, general knowledge). Billed per search.",
+          "github_token": "Optional. A fine-grained token with Issues read and write access lets Alfred admin report bugs as GitHub issues.",
+          "github_repo": "Where bug reports go, as owner/name."
         }
       }
     }

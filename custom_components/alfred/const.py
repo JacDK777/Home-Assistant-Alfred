@@ -12,11 +12,14 @@ CONF_PROMPT = "prompt"
 CONF_EFFORT = "effort"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_WEB_SEARCH = "web_search"
+CONF_GITHUB_TOKEN = "github_token"
+CONF_GITHUB_REPO = "github_repo"
 
 DEFAULT_CHAT_MODEL = "claude-haiku-5-5"
 DEFAULT_EFFORT = "low"
 DEFAULT_MAX_TOKENS = 16000
 DEFAULT_WEB_SEARCH = False
+DEFAULT_GITHUB_REPO = "jacdk777/home-assistant-alfred"
 
 MODEL_OPTIONS = [
     "claude-haiku-5-5",

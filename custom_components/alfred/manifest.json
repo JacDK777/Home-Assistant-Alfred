@@ -1,7 +1,14 @@
 {
   "domain": "alfred",
   "name": "Alfred",
-  "after_dependencies": ["assist_pipeline", "intent"],
+  "after_dependencies": [
+    "assist_pipeline",
+    "automation",
+    "config",
+    "intent",
+    "script",
+    "system_log"
+  ],
   "codeowners": ["@jacdk777"],
   "config_flow": true,
   "dependencies": ["conversation"],
@@ -10,5 +17,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/jacdk777/home-assistant-alfred/issues",
   "requirements": ["anthropic>=0.125.0", "voluptuous-openapi>=0.2.0"],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

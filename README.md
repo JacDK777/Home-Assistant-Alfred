@@ -66,6 +66,24 @@ For Opus 5.5, Sonnet 5.5 and Fable 5.1 (not Haiku), Alfred turns on Anthropic's 
 on Anthropic's recommended fallback model instead of failing. If the request is still declined,
 Alfred replies with a short apology.
 
+## Admin tools
+
+Alfred can also help look after Home Assistant itself. In **Configure → Control Home
+Assistant**, also select **Alfred admin**. Alfred can then:
+
+- read recent warnings and errors from the log ("Are there any errors in the log?")
+- list, read, create and edit automations and scripts that were made in the UI
+  ("Make the porch light turn on at sunset")
+- report bugs in Alfred as GitHub issues, with Alfred's recent log entries attached,
+  if you add a GitHub token in the options. Use a fine-grained token limited to this
+  repository with **Issues: read and write**. Issues are public.
+
+These tools only work for Home Assistant **administrators**. Requests from other users,
+or from voice satellites and automations that are not tied to a signed-in user, get no
+admin tools. Alfred is told to describe every change and wait for your yes before
+saving it, and Home Assistant validates each automation and script before it is
+written.
+
 ## Cost
 
 Alfred uses prompt caching. Your exposed-device list, the tool definitions and the conversation so
