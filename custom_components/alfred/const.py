@@ -13,15 +13,15 @@ CONF_EFFORT = "effort"
 CONF_MAX_TOKENS = "max_tokens"
 CONF_WEB_SEARCH = "web_search"
 
-DEFAULT_CHAT_MODEL = "claude-opus-5-5"
+DEFAULT_CHAT_MODEL = "claude-haiku-5-5"
 DEFAULT_EFFORT = "low"
 DEFAULT_MAX_TOKENS = 16000
 DEFAULT_WEB_SEARCH = False
 
 MODEL_OPTIONS = [
-    "claude-opus-5-5",
-    "claude-sonnet-5-5",
     "claude-haiku-5-5",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5",
     "claude-fable-5-1",
 ]
 EFFORT_OPTIONS = ["low", "medium", "high"]
@@ -34,6 +34,21 @@ FALLBACK_MODELS = {
     "claude-sonnet-5-5",
 }
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+# Models that support web search with dynamic filtering; others get the basic tool.
+DYNAMIC_WEB_SEARCH_MODELS = {
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-5-5",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+}
+
+# Prompt caching: reused prefixes are billed at ~10% of the input price.
+CACHE_CONTROL = {"type": "ephemeral"}
 
 # Max number of model round trips per user message (tool calls in between).
 MAX_TOOL_ITERATIONS = 10

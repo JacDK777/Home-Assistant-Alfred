@@ -56,15 +56,30 @@ Open **Settings → Devices & services → Alfred → Configure**:
 | --- | --- | --- |
 | Instructions | Butler persona | Alfred's personality and rules. Supports templates, e.g. `{{ states('sensor.outdoor_temperature') }}`. |
 | Control Home Assistant | Assist | Which Home Assistant LLM APIs Alfred may use. Clear it for a chat-only assistant. |
-| Model | `claude-opus-5-5` | Opus is the most capable. `claude-sonnet-5-5` and `claude-haiku-5-5` answer faster and cost less, which suits voice well. |
+| Model | `claude-haiku-5-5` | Haiku is the fastest and cheapest, and handles everyday home control well. Switch to `claude-sonnet-5-5` or `claude-opus-5-5` for more complex reasoning. |
 | Effort | Low | How hard Claude thinks before replying. Low keeps voice responses snappy; raise it for complex requests. |
 | Maximum response tokens | 16000 | Upper bound on a single reply. |
 | Allow web search | Off | Lets Alfred search the web. Each search is billed by Anthropic. |
 
-For Opus 5.5, Sonnet 5.5 and Fable 5.1, Alfred turns on Anthropic's server-side
+For Opus 5.5, Sonnet 5.5 and Fable 5.1 (not Haiku), Alfred turns on Anthropic's server-side
 `fallbacks: "default"` setting. If a request is declined by a safety classifier, the API retries it
 on Anthropic's recommended fallback model instead of failing. If the request is still declined,
 Alfred replies with a short apology.
+
+## Cost
+
+Alfred uses prompt caching. Your exposed-device list, the tool definitions and the conversation so
+far are cached for 5 minutes, and Anthropic bills cached input at about a tenth of the normal price.
+Commands and state questions take two calls to Claude (choose the tool, then reply), and the second
+call reads almost everything from cache.
+
+With the default Haiku 5.5 model, a home with about 50 exposed entities costs roughly a tenth of a
+cent per request, so 20 requests a day comes to well under $1 a month. Sonnet 5.5 costs about 20
+times as much and Opus 5.5 about 40 times as much. Exposing fewer entities and turning on **Prefer
+handling commands locally** lowers the cost further.
+
+To see real token usage, enable debug logging for `custom_components.alfred`. Each call then logs
+its input, cache-read, cache-write and output tokens.
 
 ## Using Alfred from automations
 

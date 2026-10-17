@@ -41,7 +41,7 @@ async def test_user_flow(hass: HomeAssistant, mock_models_list: AsyncMock) -> No
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {CONF_API_KEY: "sk-test"}
-    assert result["options"][CONF_CHAT_MODEL] == "claude-opus-5-5"
+    assert result["options"][CONF_CHAT_MODEL] == "claude-haiku-5-5"
     assert result["options"][CONF_LLM_HASS_API] == ["assist"]
 
 
@@ -85,7 +85,7 @@ async def test_options_flow(hass: HomeAssistant, setup_alfred) -> None:
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
-            CONF_CHAT_MODEL: "claude-haiku-5-5",
+            CONF_CHAT_MODEL: "claude-sonnet-5-5",
             CONF_EFFORT: "medium",
             CONF_MAX_TOKENS: 4096,
             CONF_WEB_SEARCH: True,
@@ -95,5 +95,5 @@ async def test_options_flow(hass: HomeAssistant, setup_alfred) -> None:
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_CHAT_MODEL] == "claude-haiku-5-5"
+    assert entry.options[CONF_CHAT_MODEL] == "claude-sonnet-5-5"
     assert CONF_LLM_HASS_API not in entry.options

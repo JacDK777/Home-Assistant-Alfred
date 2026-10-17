@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AlfredConfigEntry
 from .const import (
+    CACHE_CONTROL,
     CONF_CHAT_MODEL,
     CONF_EFFORT,
     CONF_MAX_TOKENS,
@@ -30,6 +31,7 @@ from .const import (
     DEFAULT_PROMPT,
     DEFAULT_WEB_SEARCH,
     DOMAIN,
+    DYNAMIC_WEB_SEARCH_MODELS,
     FALLBACK_BETA,
     FALLBACK_MODELS,
     LOGGER,
@@ -204,13 +206,22 @@ class AlfredConversationEntity(
                 _format_tool(tool, chat_log.llm_api.custom_serializer)
                 for tool in chat_log.llm_api.tools
             )
+        if tools:
+            # Tool definitions rarely change, so cache them even if the prompt does.
+            tools[-1]["cache_control"] = CACHE_CONTROL
         if options.get(CONF_WEB_SEARCH, DEFAULT_WEB_SEARCH):
-            tools.append(
-                {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
+            search_type = (
+                "web_search_20260209"
+                if model in DYNAMIC_WEB_SEARCH_MODELS
+                else "web_search_20250305"
             )
+            tools.append({"type": search_type, "name": "web_search", "max_uses": 3})
 
         extra_body: dict[str, Any] = {
-            "output_config": {"effort": options.get(CONF_EFFORT, DEFAULT_EFFORT)}
+            "output_config": {"effort": options.get(CONF_EFFORT, DEFAULT_EFFORT)},
+            # Automatic caching of the conversation so far: the follow-up call after
+            # a tool result re-reads everything before it at the cached price.
+            "cache_control": CACHE_CONTROL,
         }
         extra_headers: dict[str, str] = {}
         if model in FALLBACK_MODELS:
@@ -221,7 +232,15 @@ class AlfredConversationEntity(
         request: dict[str, Any] = {
             "model": model,
             "max_tokens": int(options.get(CONF_MAX_TOKENS, DEFAULT_MAX_TOKENS)),
-            "system": chat_log.content[0].content,
+            # The system prompt (instructions + exposed devices) is stable across
+            # turns, so tools + system are cached together for every request.
+            "system": [
+                {
+                    "type": "text",
+                    "text": chat_log.content[0].content,
+                    "cache_control": CACHE_CONTROL,
+                }
+            ],
             "extra_body": extra_body,
             "extra_headers": extra_headers,
         }
@@ -279,6 +298,13 @@ class AlfredConversationEntity(
             message = await stream.get_final_message()
 
         stop_reason[0] = message.stop_reason
+        LOGGER.debug(
+            "Usage: input=%s cache_read=%s cache_write=%s output=%s",
+            message.usage.input_tokens,
+            message.usage.cache_read_input_tokens,
+            message.usage.cache_creation_input_tokens,
+            message.usage.output_tokens,
+        )
         if message.stop_reason == "refusal":
             LOGGER.info("Request declined: %s", getattr(message, "stop_details", None))
             # A refused turn is not replayed; answer politely instead.

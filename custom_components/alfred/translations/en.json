@@ -41,7 +41,7 @@
         "data_description": {
           "prompt": "Alfred's personality and rules. Supports templates.",
           "llm_hass_api": "Lets Alfred read and control the entities you have exposed to Assist.",
-          "chat_model": "Opus is the most capable; Sonnet and Haiku answer faster and cost less.",
+          "chat_model": "Haiku is fastest and cheapest; Sonnet and Opus handle more complex requests.",
           "effort": "How hard Claude thinks before answering. Low keeps voice replies snappy.",
           "web_search": "Lets Alfred look things up online (news, opening hours, general knowledge). Billed per search."
         }

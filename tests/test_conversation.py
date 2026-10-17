@@ -1,7 +1,9 @@
 """Tests for the Alfred conversation agent."""
 
+from datetime import timedelta
 from typing import Any
 
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 import voluptuous as vol
 
@@ -82,12 +84,59 @@ async def test_simple_answer(
     assert result.response.response_type is intent.IntentResponseType.ACTION_DONE
     assert result.response.speech["plain"]["speech"] == "Good evening. All is well."
     request = stream_recorder.requests[0]
-    assert request["model"] == "claude-opus-5-5"
-    assert "Alfred" in request["system"]
+    assert request["model"] == "claude-haiku-5-5"
     assert request["messages"] == [
         {"role": "user", "content": [{"type": "text", "text": "How is the house?"}]}
     ]
     assert request["extra_body"]["output_config"] == {"effort": "low"}
+    # Haiku 5.5 has no server-side fallback.
+    assert "fallbacks" not in request["extra_body"]
+    assert request["extra_headers"] == {}
+
+
+async def test_prompt_caching(
+    hass: HomeAssistant,
+    setup_alfred,
+    stream_recorder: StreamRecorder,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Tools, the system prompt and the conversation tail are marked for caching."""
+    stream_recorder.responses += [
+        make_message([{"type": "text", "text": "Hi."}]),
+        make_message([{"type": "text", "text": "Still here."}]),
+    ]
+
+    result = await _converse(hass, "Hello")
+    freezer.tick(timedelta(minutes=1))
+    await _converse(hass, "Are you there?", result.conversation_id)
+
+    request, follow_up = stream_recorder.requests
+    # No clock or other per-turn data in the cached prefix, so later turns hit it.
+    assert follow_up["system"] == request["system"]
+    assert follow_up["tools"] == request["tools"]
+    (system,) = request["system"]
+    assert "Alfred" in system["text"]
+    assert system["cache_control"] == {"type": "ephemeral"}
+    assert request["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert all("cache_control" not in tool for tool in request["tools"][:-1])
+    assert request["extra_body"]["cache_control"] == {"type": "ephemeral"}
+
+
+async def test_fallbacks_on_supported_models(
+    hass: HomeAssistant, setup_alfred, stream_recorder: StreamRecorder
+) -> None:
+    """Opus 5.5 gets server-side refusal fallbacks."""
+    hass.config_entries.async_update_entry(
+        setup_alfred,
+        options={**setup_alfred.options, CONF_CHAT_MODEL: "claude-opus-5-5"},
+    )
+    await hass.async_block_till_done()
+    stream_recorder.responses.append(make_message([{"type": "text", "text": "Hi."}]))
+
+    await _converse(hass, "Hello")
+
+    request = stream_recorder.requests[0]
+    assert request["model"] == "claude-opus-5-5"
     assert request["extra_body"]["fallbacks"] == "default"
     assert request["extra_headers"] == {
         "anthropic-beta": "server-side-fallback-2026-07-01"
@@ -166,17 +215,24 @@ async def test_refusal(
     assert "can't help" in result.response.speech["plain"]["speech"]
 
 
-async def test_web_search_and_model_options(
-    hass: HomeAssistant, setup_alfred, stream_recorder: StreamRecorder
+@pytest.mark.parametrize(
+    ("model", "search_type"),
+    [
+        ("claude-haiku-5-5", "web_search_20250305"),
+        ("claude-opus-5-5", "web_search_20260209"),
+    ],
+)
+async def test_web_search(
+    hass: HomeAssistant,
+    setup_alfred,
+    stream_recorder: StreamRecorder,
+    model: str,
+    search_type: str,
 ) -> None:
-    """Web search is added when enabled; fallbacks only go to models that take them."""
+    """Web search uses dynamic filtering only on models that support it."""
     hass.config_entries.async_update_entry(
         setup_alfred,
-        options={
-            **setup_alfred.options,
-            CONF_WEB_SEARCH: True,
-            CONF_CHAT_MODEL: "claude-haiku-5-5",
-        },
+        options={**setup_alfred.options, CONF_WEB_SEARCH: True, CONF_CHAT_MODEL: model},
     )
     await hass.async_block_till_done()
     stream_recorder.responses.append(make_message([{"type": "text", "text": "Sunny."}]))
@@ -184,13 +240,11 @@ async def test_web_search_and_model_options(
     await _converse(hass, "What's the weather?")
 
     request = stream_recorder.requests[0]
-    assert {
-        "type": "web_search_20260209",
+    assert request["tools"][-1] == {
+        "type": search_type,
         "name": "web_search",
         "max_uses": 3,
-    } in request["tools"]
-    assert "fallbacks" not in request["extra_body"]
-    assert request["extra_headers"] == {}
+    }
 
 
 async def test_fallback_blocks_not_echoed(
