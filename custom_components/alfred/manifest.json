@@ -1,0 +1,14 @@
+{
+  "domain": "alfred",
+  "name": "Alfred",
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "codeowners": ["@jacdk777"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/jacdk777/home-assistant-alfred",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/jacdk777/home-assistant-alfred/issues",
+  "requirements": ["anthropic>=1.0.0"],
+  "version": "0.1.0"
+}

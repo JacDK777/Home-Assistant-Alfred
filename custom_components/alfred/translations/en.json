@@ -1,0 +1,60 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Alfred to Claude",
+        "description": "Enter an Anthropic API key. You can create one at https://platform.claude.com/settings/keys.",
+        "data": {
+          "api_key": "API key"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update your Anthropic API key",
+        "description": "Your Anthropic API key was rejected. Enter a new one.",
+        "data": {
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Service is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Alfred settings",
+        "data": {
+          "prompt": "Instructions",
+          "llm_hass_api": "Control Home Assistant",
+          "chat_model": "Model",
+          "effort": "Effort",
+          "max_tokens": "Maximum response tokens",
+          "web_search": "Allow web search"
+        },
+        "data_description": {
+          "prompt": "Alfred's personality and rules. Supports templates.",
+          "llm_hass_api": "Lets Alfred read and control the entities you have exposed to Assist.",
+          "chat_model": "Opus is the most capable; Sonnet and Haiku answer faster and cost less.",
+          "effort": "How hard Claude thinks before answering. Low keeps voice replies snappy.",
+          "web_search": "Lets Alfred look things up online (news, opening hours, general knowledge). Billed per search."
+        }
+      }
+    }
+  },
+  "selector": {
+    "effort": {
+      "options": {
+        "low": "Low (fastest)",
+        "medium": "Medium",
+        "high": "High (most thorough)"
+      }
+    }
+  }
+}

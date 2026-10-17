@@ -1,0 +1,92 @@
+# Alfred
+
+A Claude-powered butler for Home Assistant. Alfred is a **conversation agent** that plugs into
+Assist, so the same agent answers you whether you type in the Assist dialog, talk to a voice
+satellite (Home Assistant Voice PE, ESPHome, Wyoming), or use the companion app.
+
+- **Answers questions about your home:** "Is the back door locked?", "How warm is the nursery?",
+  "Which lights are still on downstairs?"
+- **Controls your devices:** "Turn off everything in the kitchen", "Set the heating to 20 degrees",
+  "Start the robot vacuum".
+- **Built for voice:** short, plain spoken replies with no markdown. Responses stream to
+  text-to-speech as they are generated so Alfred starts talking sooner. Alfred only ends with a
+  question when it needs an answer, because a question keeps the microphone open.
+- **Optional web search** for general questions such as news or opening hours.
+- **Any language** that your speech-to-text and text-to-speech engines support.
+
+Alfred uses Home Assistant's built-in Assist API for device access, so it can only see and control
+the entities you have **exposed to Assist**.
+
+## Requirements
+
+- Home Assistant 2025.8 or newer (tested against 2026.2)
+- An Anthropic API key from <https://platform.claude.com/settings/keys>
+
+## Installation
+
+### HACS (recommended)
+
+1. In HACS, open the menu → **Custom repositories**.
+2. Add `https://github.com/jacdk777/home-assistant-alfred` with the category **Integration**.
+3. Install **Alfred**, then restart Home Assistant.
+
+### Manual
+
+Copy `custom_components/alfred` into your Home Assistant `config/custom_components/` folder and
+restart.
+
+## Setup
+
+1. **Settings → Devices & services → Add integration → Alfred**, then paste your API key.
+2. **Settings → Voice assistants → Add assistant** (or edit an existing one):
+   - **Conversation agent:** Alfred
+   - **Speech-to-text:** for example Home Assistant Cloud, Whisper, or Speech-to-Phrase
+   - **Text-to-speech:** for example Home Assistant Cloud or Piper
+   - Optional: turn on **Prefer handling commands locally** so simple commands like "turn on the
+     lights" run instantly on Home Assistant's built-in agent and only everything else goes to
+     Alfred.
+3. **Settings → Voice assistants → Expose** and pick the entities Alfred may see and control.
+4. Make it your preferred assistant, or assign it to a voice satellite.
+
+## Options
+
+Open **Settings → Devices & services → Alfred → Configure**:
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| Instructions | Butler persona | Alfred's personality and rules. Supports templates, e.g. `{{ states('sensor.outdoor_temperature') }}`. |
+| Control Home Assistant | Assist | Which Home Assistant LLM APIs Alfred may use. Clear it for a chat-only assistant. |
+| Model | `claude-opus-5-5` | Opus is the most capable. `claude-sonnet-5-5` and `claude-haiku-5-5` answer faster and cost less, which suits voice well. |
+| Effort | Low | How hard Claude thinks before replying. Low keeps voice responses snappy; raise it for complex requests. |
+| Maximum response tokens | 16000 | Upper bound on a single reply. |
+| Allow web search | Off | Lets Alfred search the web. Each search is billed by Anthropic. |
+
+For Opus 5.5, Sonnet 5.5 and Fable 5.1, Alfred turns on Anthropic's server-side
+`fallbacks: "default"` setting. If a request is declined by a safety classifier, the API retries it
+on Anthropic's recommended fallback model instead of failing. If the request is still declined,
+Alfred replies with a short apology.
+
+## Using Alfred from automations
+
+```yaml
+action: conversation.process
+data:
+  agent_id: conversation.alfred
+  text: "Give me a one sentence summary of the house before I leave."
+response_variable: alfred
+```
+
+Then speak the reply with `{{ alfred.response.speech.plain.speech }}` on a media player via
+`tts.speak`.
+
+## Development
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements_test.txt
+ruff check . && ruff format --check .
+pytest
+```
+
+The tests use `pytest-homeassistant-custom-component` and mock the Anthropic API, so they need no
+API key.
