@@ -1,0 +1,131 @@
+# Home Assistant hand-over
+
+Everything someone (a person or Claude) needs to pick up managing this Home Assistant setup.
+The same file lives in both GitHub repositories and in the Claude project's shared files at
+`handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
+
+**Last updated:** 2026-10-17
+
+> **Passwords and tokens are not in this file.** They are kept only in the Claude project's
+> shared files at `handover/credentials.md`, which is never committed to git. This file only
+> says where each credential lives.
+
+---
+
+## 1. The setup at a glance
+
+| Item | Value |
+| --- | --- |
+| Owner | Jacques De Kock (GitHub `JacDK777`) |
+| Home Assistant version | 2026.10.2 (from `.HA_VERSION`) |
+| Config folder in the Terminal & SSH add-on | `/homeassistant` (not `/config` on this version) |
+| Network | Home LAN is `192.168.68.x` (devices seen at .101, .115); NAS at `192.168.0.153` |
+| Claude project | "Alfred and Home Assistant" on claude.ai |
+| Phone | Samsung S22 Ultra; side button → Digital assistant → Home Assistant Assist (Alfred) |
+
+## 2. Repositories
+
+### `JacDK777/home-assistant-config`: the live HA config
+- Default branch: `main`. This repo **is** the `/homeassistant` folder on the HA box.
+- Synced into HA by the **Git pull** add-on:
+  - Repository: `https://github.com/JacDK777/home-assistant-config.git` (no token in the URL)
+  - Deployment user: `JacDK777`; Deployment password: the fine-grained GitHub token (see credentials)
+  - Branch `main`, remote `origin`, Git command `pull`, Auto restart **on**, Polling **on**, interval **300 s**
+  - Healthy log ends with "Already up to date".
+- The HA box's own git remote was set with
+  `git remote set-url origin https://github.com/JacDK777/home-assistant-config.git` (token removed).
+- `.gitignore` keeps out: `secrets.yaml`, `.storage/`, `*.db*`, `*.log*`, `.cloud/`, `deps/`, `tts/`,
+  `backups/`, `custom_components`, `ip_bans.yaml`, `automations.yaml`, `scripts.yaml`, `scenes.yaml`,
+  `.cache/`, `.ha_run.lock`.
+  - Automations, scripts and scenes are deliberately **not** in git: they are UI-managed and edited
+    through the HA connector, so tracking them would make Git pull conflict.
+  - Dashboards (e.g. Main Dash) live in `.storage/` and are therefore **not** in git either.
+- Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
+  cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
+  HTML Jinja2 template card).
+- **Rule:** all YAML changes go as pull requests for Jacques to approve. Git pull applies them
+  within 5 minutes of merge and restarts HA if needed.
+
+### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
+- Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
+- Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
+  Version 0.2.1. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+- Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
+  #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+.
+- `scripts/tuya_swap.py` (branch `claude/project-thread-8lhumg`, not merged): swaps Tuya cloud entities
+  on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
+  the dashboard first, then restart HA. Run in the Terminal add-on:
+  `curl -sL https://raw.githubusercontent.com/JacDK777/Home-Assistant-Alfred/3e492a6a44986e53616657a7cc435a63ce3d07e6/scripts/tuya_swap.py -o /tmp/tuya_swap.py && python3 /tmp/tuya_swap.py`
+  (`apk add python3` if python3 is missing).
+
+## 3. How Claude reaches Home Assistant
+
+- **HA MCP connector** (claude.ai custom connector at `https://<HA internet URL>/api/mcp`, signed in
+  with the HA admin account). Exposes the **Assist** API (devices exposed to Assist) and **Alfred admin**
+  (error log, list/get/save automations and scripts). It cannot read YAML files, dashboards, or which
+  integration an entity belongs to.
+- **GitHub** for YAML (PRs on `home-assistant-config`) and Alfred code (PRs on `Home-Assistant-Alfred`).
+- **Terminal & SSH add-on** for anything else: Jacques runs commands and pastes the output.
+  Paste is Ctrl+Shift+V; password prompts show nothing while typing.
+
+## 4. Alfred configuration (Settings → Devices & services → Alfred → Configure)
+
+- Control Home Assistant: **Assist** + **Alfred admin**.
+- Web search: can be enabled ("Allow web search"); about US$0.01 per search, max 3 per question.
+  Suggested instruction line for general-assistant use is in the Alfred thread.
+- Optional GitHub token field (Issues read/write on the Alfred repo) for bug reports; issues are public.
+- Admin tools only work for HA admin users.
+- Wake word: a phone can't do "Hey Alfred"; S22 uses side-button hold. A real "Hey Alfred" needs a
+  Voice PE / Wyoming satellite with a custom openWakeWord or microWakeWord model.
+
+## 5. Devices and integrations
+
+- **Tuya → Tuya Local (make-all, installed via HACS custom repo `https://github.com/make-all/tuya-local`)**.
+  Added via Smart Life QR login; each device needs its IP (reserve it in the router).
+  - Wall switches: Foyer, Great Room, Outside, Garage, Pantry, Wine Cellar, Guest Bathroom, Guest Bedroom,
+    Main Bedroom, En-Suite, JDK Study, Braai. 3-gang switches (great room, downstairs) appear as
+    `light.*_gang_N` in Tuya Local.
+  - Plugs: Oven Mains, Heat Mat socket 1, Grow Domes, Wine Cellar "Open Switch".
+  - Lights (BNETA = Tuya): Kitchen, Kitchen Pendants, Dining, Dining Room DL2, Chandelier, Main Bedroom,
+    Great Room, Living Room, Braai Room DL1, Tania Office.
+  - Ginny vacuum: still Tuya cloud only (not added in Tuya Local).
+  - Temp & Humidity sensor: if battery powered it stays on the cloud Tuya integration.
+- **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
+  (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
+- **TCL TVs (3)** via Chromecast; Bedroom TV at 192.168.68.101 often unreachable. Living Room TV shows
+  as three duplicate entities.
+- **Rain Bird** (6 zones), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
+  device `eyegas` at 192.168.68.115 (often unreachable).
+
+## 6. Automations (UI-managed, not in git)
+
+| Name | Entity | State |
+| --- | --- | --- |
+| Wake up call | `automation.wake_up_call` | off |
+| Garage Light Activate | `automation.garage_light_activate` | on |
+| Garage Door Automation Light Swicth | `automation.garage_light_auto` | on |
+| Garage Door Open/Close | `automation.new_automation_2` | on |
+| Water Tank Notification | `automation.water_tank_notification_2` | off |
+| Grow Lights Timer | `automation.grow_lights_timer` | on |
+
+No scripts. Grow Lights Timer and both garage-light automations point at Tuya devices and need
+repointing to the Tuya Local entities once the old Tuya integration is removed.
+
+## 7. Open items
+
+- Main Dash → Tuya Local swap: second dry run of `tuya_swap.py` pending, then `--apply` and restart.
+- Remove the old Tuya cloud integration once everything works locally; then repoint the three automations.
+- Braai Room DL1 and Tania Office Light unavailable; Living Room DL1/DL3 not yet added to Tuya Local.
+- `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
+- `configuration.yaml` `shell_command.mount_nas_folder` has the NAS username and password in plain text,
+  and that file is in git. Move them into `secrets.yaml` (`!secret`) and consider changing the NAS password.
+- Ring camera FFmpeg timeout / push client "Incorrect padding" errors.
+- Aircon model number needed to choose a local integration.
+- GitHub token for Git pull expires about **2027-10-17** (1-year fine-grained PAT, Contents read/write,
+  only `home-assistant-config`). Renew before then and paste the new one into the Git pull password field.
+  The token was visible in a screenshot; regenerating it is recommended.
+- Alfred: no GitHub release yet (HACS shows a commit id); no `main` branch.
+
+## 8. Change log
+
+- 2026-10-17: Hand-over doc created.
