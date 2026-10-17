@@ -1,2 +1,6 @@
-pytest-homeassistant-custom-component
+pytest-homeassistant-custom-component==0.13.316
+anthropic==0.125.0
+# Requirements of Home Assistant's conversation integration, which Alfred depends on.
+hassil==3.5.0
+home-assistant-intents==2026.1.28
 ruff

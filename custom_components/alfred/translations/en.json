@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Connect Alfred to Claude",
-        "description": "Enter an Anthropic API key. You can create one at https://platform.claude.com/settings/keys.",
+        "description": "Enter an Anthropic API key. You can create one at {api_keys_url}.",
         "data": {
           "api_key": "API key"
         }

@@ -51,6 +51,8 @@ from .const import (
     MODEL_OPTIONS,
 )
 
+API_KEYS_URL = "https://platform.claude.com/settings/keys"
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_API_KEY): TextSelector(
@@ -107,7 +109,10 @@ class AlfredConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = error
 
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user",
+            data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+            description_placeholders={"api_keys_url": API_KEYS_URL},
         )
 
     async def async_step_reauth(
