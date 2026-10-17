@@ -19,7 +19,7 @@ the entities you have **exposed to Assist**.
 
 ## Requirements
 
-- Home Assistant 2025.8 or newer (tested against 2026.2)
+- Home Assistant 2025.8 or newer (tested against 2026.2 and 2026.10)
 - An Anthropic API key from <https://platform.claude.com/settings/keys>
 
 ## Installation

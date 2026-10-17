@@ -3,7 +3,11 @@
 from unittest.mock import AsyncMock
 
 import anthropic
-import httpx
+
+try:
+    import httpx2 as httpx  # anthropic 1.x
+except ImportError:
+    import httpx
 import pytest
 
 from homeassistant import config_entries

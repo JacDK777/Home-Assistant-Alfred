@@ -18,7 +18,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import aiohttp_client, config_validation as cv, llm
 from homeassistant.util.json import JsonObjectType
 
-from .const import CONF_GITHUB_REPO, CONF_GITHUB_TOKEN, DEFAULT_GITHUB_REPO, LOGGER
+from .const import (
+    CONF_GITHUB_REPO,
+    CONF_GITHUB_TOKEN,
+    DEFAULT_GITHUB_REPO,
+    DOMAIN,
+    LOGGER,
+)
 
 ADMIN_API_ID = "alfred_admin"
 ADMIN_API_NAME = "Alfred admin (error log, automations, scripts, issues)"
@@ -76,15 +82,20 @@ def _log_entries(hass: HomeAssistant, limit: int, only_alfred: bool = False) -> 
 class AdminTool(llm.Tool):
     """Base class: checks for an admin before running the tool."""
 
+    integration = DOMAIN
+
     async def async_call(
         self,
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> JsonObjectType:
+    ) -> Any:
         """Check permissions, then run the tool."""
         await _async_require_admin(hass, llm_context)
-        return await self._async_run(hass, self.parameters(tool_input.tool_args))
+        data = await self._async_run(hass, self.parameters(tool_input.tool_args))
+        if hasattr(llm, "ToolResult"):  # Home Assistant 2026.10 and newer
+            return llm.ToolResult(data=data)
+        return data
 
     async def _async_run(
         self, hass: HomeAssistant, args: dict[str, Any]
