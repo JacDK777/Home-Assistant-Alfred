@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-18
+**Last updated:** 2026-10-18 (11:15)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -50,10 +50,14 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.2.1. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.6.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
-  #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+.
-- `scripts/tuya_swap.py` (branch `claude/project-thread-8lhumg`, not merged): swaps Tuya cloud entities
+  #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
+  #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
+  update_tuya_local_device, #9 auto-reconnect of Tuya Local devices to their new IP every 5 min,
+  #10 rename_entity / rename_device.
+- After updating Alfred (HACS redownload + restart), start a **new Claude thread** to see the new tools.
+- `scripts/tuya_swap.py` (merged in #7): swaps Tuya cloud entities
   on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
   the dashboard first, then restart HA. Run in the Terminal add-on:
   `curl -sL https://raw.githubusercontent.com/JacDK777/Home-Assistant-Alfred/3e492a6a44986e53616657a7cc435a63ce3d07e6/scripts/tuya_swap.py -o /tmp/tuya_swap.py && python3 /tmp/tuya_swap.py`
@@ -63,8 +67,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 
 - **HA MCP connector** (claude.ai custom connector at `https://<HA internet URL>/api/mcp`, signed in
   with the HA admin account). Exposes the **Assist** API (devices exposed to Assist) and **Alfred admin**
-  (error log, list/get/save automations and scripts). It cannot read YAML files, dashboards, or which
-  integration an entity belongs to.
+  (error log, automations/scripts, dashboards, entity lookup and rename, Tuya Local device checks and IP
+  updates). It cannot read YAML files.
 - **GitHub** for YAML (PRs on `home-assistant-config`) and Alfred code (PRs on `Home-Assistant-Alfred`).
 - **Terminal & SSH add-on** for anything else: Jacques runs commands and pastes the output.
   Paste is Ctrl+Shift+V; password prompts show nothing while typing.
@@ -88,11 +92,19 @@ The same file lives in both GitHub repositories and in the Claude project's shar
     `light.*_gang_N` in Tuya Local.
   - Plugs: Oven Mains, Heat Mat socket 1, Grow Domes, Wine Cellar "Open Switch".
   - Lights (BNETA = Tuya): Kitchen, Kitchen Pendants, Dining, Dining Room DL2, Chandelier, Main Bedroom,
-    Great Room, Living Room, Braai Room DL1, Tania Office.
-  - Smart bulbs lose power and show "error 901: Unable to Connect" when the wall switch feeding them is off.
+    Great Room, Living Room, Braai Room DL1, Tania Office Light LB 1.
+  - Tania office switch gangs are named "Tania's Office Light" and "Tania's Office Bathroom Light".
+  - 45 Tuya Local devices. "error 901: Unable to Connect" means the bulb is unreachable: either its wall switch is
+    off (no power) or its IP changed. On 2026-10-18, 28 bulbs had new IPs; all were reconnected and Alfred now
+    follows IP changes automatically. 4 Living Room DLs were re-added with new local keys. Details:
+    `/mnt/project-files/tuya-local/bulb-ip-check.md`. Reserving every Tuya device's IP in the Deco is still recommended.
     Known feeds: **Main Bedroom Light Switch 1** → Main Bedroom DL 1–5.
-  - Ginny vacuum: still Tuya cloud only (not added in Tuya Local).
-  - Temp & Humidity sensor: if battery powered it stays on the cloud Tuya integration.
+  - Ginny vacuum is on Tuya Local (`vacuum.ginny_2`, `sensor.ginny_battery_2`).
+- **Main Dash** (`lovelace` dashboard `new-dash-v1`, UI-managed) uses only Tuya Local entities since 2026-10-18;
+  the Grow Domes card uses `switch.plant_fan_1` and the Ginny tiles use the Tuya Local vacuum.
+  The **Remotes** dashboard water tank uses `sensor.water_tenk_1_level`.
+  - Old cloud **Tuya** integration is kept but most of its entities are disabled. Still enabled: Temp & Humidity
+    Sensor (no local copy) and an unnamed A60 bulb.
 - **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
   (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
 - **TCL TVs (3)** via Chromecast/DLNA: Living Room TCL TV at 192.168.68.101, Bedroom TV at 192.168.68.167. Cast can turn
@@ -104,28 +116,37 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 
 ## 6. Automations (UI-managed, not in git)
 
-| Name | Entity | State |
-| --- | --- | --- |
-| Wake up call | `automation.wake_up_call` | off |
-| Garage Light Activate | `automation.garage_light_activate` | on |
-| Garage Door Automation Light Swicth | `automation.garage_light_auto` | on |
-| Garage Door Open/Close | `automation.new_automation_2` | on |
-| Water Tank Notification | `automation.water_tank_notification_2` | off |
-| Grow Lights Timer | `automation.grow_lights_timer` | on |
+All automations point at Tuya Local entities (repointed 2026-10-18).
 
-Garage Door Open/Close has a template condition (only on↔off flips) so restarts/reconnects no longer open the door (fixed 2026-10-17).
+| Name | Entity | State | Notes |
+| --- | --- | --- | --- |
+| Wake up call | `automation.wake_up_call` | off | |
+| Garage Light Activate | `automation.garage_light_activate` | on | Garage light 05:00–09:00 on weekdays |
+| Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
+| Garage Door Open/Close | `automation.new_automation_2` | on | Wall switch pulses the door; ignores unavailable/unknown (no opening on restarts) and has a loop guard |
+| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch ("Open Switch", gang 3) in step with the door |
+| Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
+| Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
+| Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | on | See below |
+| Main Bedroom bulbs auto power cycle | `automation.main_bedroom_bulbs_auto_power_cycle` | on | See below |
+| Guest Bedroom bulb auto power cycle | `automation.guest_bedroom_bulb_auto_power_cycle` | on | See below |
+| Tania's Office bulb auto power cycle | `automation.tania_s_office_bulb_auto_power_cycle` | on | See below |
+| Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
 
-No scripts. Grow Lights Timer and both garage-light automations point at Tuya devices and need
-repointing to the Tuya Local entities once the old Tuya integration is removed.
+**Bulb auto power cycle:** when the room's wall switch turns on, wait 2 minutes; if its bulbs are still
+unavailable, notify the JDK phone and power-cycle the switch once. The Great Room switch feeds 23 bulbs,
+including the kitchen pendants. Added after a second outage on 2026-10-18 (~10:15) where bulbs refused
+connections (error 901) with no IP change until their power was cycled. Avoid using the Smart Life app on the
+home Wi-Fi, which can lock bulbs out of local connections.
+
+**Updates:** Home Assistant does not auto-install Core/OS updates; the notification above asks first.
+
+No scripts.
 
 ## 7. Open items
 
-- Main Dash → Tuya Local swap: second dry run of `tuya_swap.py` pending, then `--apply` and restart.
-- Remove the old Tuya cloud integration once everything works locally; then repoint the three automations.
-- Braai Room DL1 and Tania Office Light unavailable; Living Room DL1/DL3 not yet added to Tuya Local.
-- **Grow Lights Timer fails**: "The Tuya cloud rejected the command", and the old cloud **Tuya** integration
-  (`jdk.eendrag@gmail.com`) needs re-authentication. Repoint the automation to the Tuya Local Grow Domes entity
-  (preferred) or re-authenticate the Tuya integration.
+- Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
+- Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
 - `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
 - NAS password moved to `secrets.yaml` (config PR #2), but it is still in git history: change the NAS password.
@@ -138,5 +159,7 @@ repointing to the Tuya Local entities once the old Tuya integration is removed.
 
 ## 8. Change log
 
+- 2026-10-18 (11:15): Ginny and all automations on Tuya Local; Tuya cloud mostly disabled; garage switch follows door; 4 bulb auto-power-cycle automations; update-available notification.
+- 2026-10-18 (later): Alfred 0.6.0 (dashboard, rename and Tuya Local tools, auto IP follow); Main Dash fully on Tuya Local; 28 bulbs reconnected after IP changes; Tania office names.
 - 2026-10-18: Rain Bird IP and fix, TV power-on cause, Grow Lights Timer failing on Tuya cloud, network/remote-access details, GitHub token regenerated.
 - 2026-10-17: Hand-over doc created. Credentials collected; NAS mount command moved to secrets.yaml (config PR #2). Garage door no longer opens on HA/Tuya restarts.
