@@ -74,6 +74,10 @@ Assistant**, also select **Alfred admin**. Alfred can then:
 - read recent warnings and errors from the log ("Are there any errors in the log?")
 - list, read, create and edit automations and scripts that were made in the UI
   ("Make the porch light turn on at sunset")
+- list, read and edit dashboards that are managed in the UI ("Put the kitchen lights on
+  the Main Dash"). The version before each change is kept, so Alfred can undo it.
+- look up entities with the integration and device they come from ("Which entities
+  come from Tuya Local?")
 - report bugs in Alfred as GitHub issues, with Alfred's recent log entries attached,
   if you add a GitHub token in the options. Use a fine-grained token limited to this
   repository with **Issues: read and write**. Issues are public.
