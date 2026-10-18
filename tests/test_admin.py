@@ -15,7 +15,7 @@ import voluptuous as vol
 
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import llm
+from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 from homeassistant.setup import async_setup_component
 
 from custom_components.alfred.admin import ADMIN_API_ID
@@ -81,6 +81,10 @@ async def test_admin_tools_only_for_admins(
         "save_automation",
         "get_script",
         "save_script",
+        "list_dashboards",
+        "get_dashboard",
+        "save_dashboard",
+        "find_entities",
     }
 
     hass_admin_user.groups = []
@@ -195,3 +199,101 @@ async def test_report_issue(
     assert body["title"] == "Lights"
     assert "Alfred failed" in body["body"]
     assert "Unrelated" not in body["body"]
+
+
+async def test_edit_dashboard(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, hass_storage
+) -> None:
+    """Dashboards are listed, read and saved, keeping the previous version."""
+    hass_storage["lovelace_dashboards"] = {
+        "version": 1,
+        "data": {
+            "items": [
+                {
+                    "id": "main_dash",
+                    "url_path": "main-dash",
+                    "title": "Main Dash",
+                    "mode": "storage",
+                    "require_admin": False,
+                    "show_in_sidebar": True,
+                }
+            ]
+        },
+    }
+    old = {"views": [{"cards": [{"type": "tile", "entity": "switch.cloud"}]}]}
+    hass_storage["lovelace.main_dash"] = {
+        "version": 1,
+        "key": "lovelace.main_dash",
+        "data": {"config": old},
+    }
+    assert await async_setup_component(hass, "lovelace", {})
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(api, "list_dashboards")
+    assert {"url_path": "main-dash", "title": "Main Dash", "mode": "storage"} in (
+        result["dashboards"]
+    )
+    assert (await _call(api, "get_dashboard", url_path="main-dash"))["config"] == old
+
+    with pytest.raises(HomeAssistantError, match="generated automatically"):
+        await _call(api, "get_dashboard", url_path="lovelace")
+    with pytest.raises(HomeAssistantError, match="No dashboard"):
+        await _call(api, "get_dashboard", url_path="missing")
+    with pytest.raises(HomeAssistantError, match="not changed"):
+        await _call(api, "get_dashboard", url_path="main-dash", previous=True)
+
+    new = {"views": [{"cards": [{"type": "tile", "entity": "light.local"}]}]}
+    result = await _call(api, "save_dashboard", url_path="main-dash", config=new)
+    assert result == {"success": True, "url_path": "main-dash"}
+    assert (await _call(api, "get_dashboard", url_path="main-dash"))["config"] == new
+    previous = await _call(api, "get_dashboard", url_path="main-dash", previous=True)
+    assert previous["config"] == old
+
+    with pytest.raises(vol.Invalid):
+        await _call(api, "save_dashboard", url_path="main-dash", config={"cards": []})
+
+
+async def test_find_entities(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Entities are found by integration, domain and text, with their device."""
+    entry = MockConfigEntry(domain="tuya_local")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("tuya_local", "abc123")},
+        name="Great Room Light Switch",
+    )
+    entities = er.async_get(hass)
+    entities.async_get_or_create(
+        "light",
+        "tuya_local",
+        "abc123-gang-1",
+        suggested_object_id="great_room_gang_1",
+        device_id=device.id,
+        original_name="Gang 1",
+    )
+    entities.async_get_or_create(
+        "switch", "tuya", "tuya.abc123switch_1", suggested_object_id="great_room_1"
+    )
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(api, "find_entities", integration="tuya_local")
+    assert result["count"] == 1
+    assert result["entities"][0] == {
+        "entity_id": "light.great_room_gang_1",
+        "name": "Gang 1",
+        "integration": "tuya_local",
+        "state": None,
+        "disabled": False,
+        "device_id": device.id,
+        "device_name": "Great Room Light Switch",
+        "device_identifiers": ["tuya_local:abc123"],
+    }
+    result = await _call(api, "find_entities", search="great room")
+    assert [e["entity_id"] for e in result["entities"]] == [
+        "light.great_room_gang_1",
+        "switch.great_room_1",
+    ]
+    result = await _call(api, "find_entities", domain="switch")
+    assert [e["entity_id"] for e in result["entities"]] == ["switch.great_room_1"]

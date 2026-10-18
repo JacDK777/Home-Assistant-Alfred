@@ -1,7 +1,8 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
-Its tools read the error log, edit UI-managed automations and scripts, and file
-GitHub issues. They are only offered to Home Assistant administrators.
+Its tools read the error log, edit UI-managed automations, scripts and dashboards,
+look up entities and file GitHub issues. They are only offered to Home Assistant
+administrators.
 """
 
 from __future__ import annotations
@@ -15,7 +16,14 @@ import voluptuous as vol
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import aiohttp_client, config_validation as cv, llm
+from homeassistant.helpers import (
+    aiohttp_client,
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+    llm,
+    storage,
+)
 from homeassistant.util.json import JsonObjectType
 
 from .const import (
@@ -32,8 +40,8 @@ ADMIN_API_NAME = "Alfred admin (error log, automations, scripts, issues)"
 ADMIN_PROMPT = """You also have admin tools for this Home Assistant installation.
 - Before any tool that saves or reports something, tell the user exactly what you
   will change or report and wait for an explicit yes in this conversation.
-- Read an automation or script before editing it, then save the complete updated
-  configuration.
+- Read an automation, script or dashboard before editing it, then save the complete
+  updated configuration.
 - Never put passwords, API keys or other secrets into automations, scripts or issues.
 - GitHub issues are public. Use report_issue for bugs in Alfred itself."""
 
@@ -42,6 +50,8 @@ administrators, and this request did not come from one. If asked to change
 settings, explain that an administrator has to ask from their own account."""
 
 MAX_LOG_TEXT = 2000
+MAX_ENTITIES = 500
+DEFAULT_DASHBOARD = "lovelace"
 GITHUB_API = "https://api.github.com"
 
 
@@ -284,6 +294,190 @@ class SaveScriptTool(AdminTool):
         return {"success": True, "script_id": args["script_id"]}
 
 
+def _dashboards(hass: HomeAssistant) -> dict[str | None, Any]:
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+
+    if LOVELACE_DATA not in hass.data:
+        raise HomeAssistantError("The lovelace integration is not loaded")
+    return hass.data[LOVELACE_DATA].dashboards
+
+
+def _dashboard(hass: HomeAssistant, url_path: str) -> Any:
+    """Return a dashboard by url_path; "lovelace" is the default dashboard."""
+    dashboards = _dashboards(hass)
+    key = None if url_path == DEFAULT_DASHBOARD else url_path
+    if key not in dashboards:
+        raise HomeAssistantError(
+            f"No dashboard with url_path {url_path}. Use list_dashboards."
+        )
+    return dashboards[key]
+
+
+def _backup_store(hass: HomeAssistant, url_path: str) -> storage.Store:
+    return storage.Store(hass, 1, f"{DOMAIN}.dashboard_backup.{url_path}")
+
+
+class ListDashboardsTool(AdminTool):
+    """List dashboards with the url_path the other dashboard tools need."""
+
+    name = "list_dashboards"
+    description = (
+        "List all dashboards with their url_path, title and mode. Use the url_path "
+        "with get_dashboard and save_dashboard."
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        return {
+            "dashboards": [
+                {
+                    "url_path": key or DEFAULT_DASHBOARD,
+                    "title": (dash.config or {}).get("title", "Overview"),
+                    "mode": dash.mode,
+                }
+                for key, dash in _dashboards(hass).items()
+            ]
+        }
+
+
+class GetDashboardTool(AdminTool):
+    """Read a dashboard's views and cards."""
+
+    name = "get_dashboard"
+    description = (
+        "Get the full configuration (views and cards) of a dashboard by url_path. "
+        "Set previous to true to get the version saved before Alfred's last change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("url_path"): cv.string,
+            vol.Optional("previous", default=False): cv.boolean,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        from homeassistant.components.lovelace.const import ConfigNotFound
+
+        dashboard = _dashboard(hass, args["url_path"])
+        if args["previous"]:
+            backup = await _backup_store(hass, args["url_path"]).async_load()
+            if backup is None:
+                raise HomeAssistantError("Alfred has not changed this dashboard yet")
+            return {"config": backup}
+        try:
+            config = await dashboard.async_load(False)
+        except ConfigNotFound:
+            raise HomeAssistantError(
+                "This dashboard is generated automatically and has no cards to edit "
+                "yet. Take control of it in the UI first."
+            ) from None
+        return {"mode": dashboard.mode, "config": config}
+
+
+class SaveDashboardTool(AdminTool):
+    """Replace a dashboard's views and cards, keeping the previous version."""
+
+    name = "save_dashboard"
+    description = (
+        "Replace the full configuration of a UI-managed dashboard. config is the "
+        "complete dashboard with its views, as returned by get_dashboard. The "
+        "previous version is kept and can be read with get_dashboard previous=true. "
+        "Only call after the user has confirmed the change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("url_path"): cv.string,
+            vol.Required("config"): vol.Schema(
+                {vol.Required("views"): list}, extra=True
+            ),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        from homeassistant.components.lovelace.const import MODE_STORAGE, ConfigNotFound
+
+        dashboard = _dashboard(hass, args["url_path"])
+        if dashboard.mode != MODE_STORAGE:
+            raise HomeAssistantError(
+                "This dashboard is defined in YAML files, so it can't be saved here"
+            )
+        try:
+            previous = await dashboard.async_load(False)
+        except ConfigNotFound:
+            previous = None
+        if previous is not None:
+            await _backup_store(hass, args["url_path"]).async_save(previous)
+        await dashboard.async_save(args["config"])
+        return {"success": True, "url_path": args["url_path"]}
+
+
+class FindEntitiesTool(AdminTool):
+    """Look up entities with the integration and device they come from."""
+
+    name = "find_entities"
+    description = (
+        "Find entities in the entity registry, including ones not exposed to the "
+        "assistant. Filter by integration (for example tuya or tuya_local), domain "
+        "(for example light), or a search text matched against entity id, name and "
+        "device name. Returns each entity's integration and device."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Optional("integration"): cv.string,
+            vol.Optional("domain"): cv.string,
+            vol.Optional("search"): cv.string,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        devices = dr.async_get(hass)
+        search = (args.get("search") or "").lower().replace("_", " ")
+        found = []
+        for entry in er.async_get(hass).entities.values():
+            if args.get("integration") and entry.platform != args["integration"]:
+                continue
+            if args.get("domain") and entry.domain != args["domain"]:
+                continue
+            device = devices.async_get(entry.device_id) if entry.device_id else None
+            device_name = device and (device.name_by_user or device.name)
+            name = entry.name or entry.original_name
+            if search and not any(
+                search in (text or "").lower().replace("_", " ")
+                for text in (entry.entity_id, name, device_name)
+            ):
+                continue
+            state = hass.states.get(entry.entity_id)
+            found.append(
+                {
+                    "entity_id": entry.entity_id,
+                    "name": name,
+                    "integration": entry.platform,
+                    "state": state.state if state else None,
+                    "disabled": entry.disabled_by is not None,
+                    "device_id": entry.device_id,
+                    "device_name": device_name,
+                    "device_identifiers": sorted(
+                        f"{domain}:{ident}" for domain, ident in device.identifiers
+                    )
+                    if device
+                    else [],
+                }
+            )
+        found.sort(key=lambda e: e["entity_id"])
+        return {
+            "count": len(found),
+            "entities": found[:MAX_ENTITIES],
+            "truncated": len(found) > MAX_ENTITIES,
+        }
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -362,6 +556,10 @@ class AlfredAdminAPI(llm.API):
             SaveAutomationTool(),
             GetScriptTool(),
             SaveScriptTool(),
+            ListDashboardsTool(),
+            GetDashboardTool(),
+            SaveDashboardTool(),
+            FindEntitiesTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO
