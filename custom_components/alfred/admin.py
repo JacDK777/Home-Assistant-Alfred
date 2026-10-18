@@ -1,8 +1,9 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
 Its tools read the error log, edit UI-managed automations, scripts and dashboards,
-look up and rename entities and devices, check and fix Tuya Local connections and
-file GitHub issues.
+look up and rename entities and devices, download and update HACS repositories,
+manage dashboard resources, check and fix Tuya Local connections and file GitHub
+issues.
 They are only offered to Home Assistant administrators.
 """
 
@@ -544,6 +545,194 @@ class RenameDeviceTool(AdminTool):
         }
 
 
+HACS = "hacs"
+MAX_HACS_RESULTS = 50
+
+
+def _hacs(hass: HomeAssistant) -> Any:
+    if (hacs := hass.data.get(HACS)) is None:
+        raise HomeAssistantError("HACS is not installed")
+    return hacs
+
+
+def _hacs_repository_info(repository: Any) -> dict[str, Any]:
+    return {
+        "repository_id": str(repository.data.id),
+        "full_name": repository.data.full_name,
+        "name": repository.display_name,
+        "category": str(repository.data.category),
+        "downloaded": repository.data.installed,
+        "installed_version": repository.display_installed_version,
+        "available_version": repository.display_available_version,
+        "update_available": repository.pending_update,
+    }
+
+
+def _hacs_matches(repository: Any, search: str) -> bool:
+    if not search:
+        return repository.data.installed
+    return any(
+        search in (text or "").lower()
+        for text in (
+            repository.display_name,
+            repository.data.full_name,
+            repository.data.description,
+        )
+    )
+
+
+class ListHacsRepositoriesTool(AdminTool):
+    """List HACS repositories with their installed and newest versions."""
+
+    name = "list_hacs_repositories"
+    description = (
+        "List HACS repositories (dashboard cards, integrations, themes and so on) "
+        "with their repository_id, installed version and newest version. Without a "
+        "search text it lists the downloaded ones; with one it searches every "
+        "repository HACS knows about by name, full name and description."
+    )
+    parameters = vol.Schema({vol.Optional("search"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        search = (args.get("search") or "").lower()
+        found = [
+            _hacs_repository_info(repository)
+            for repository in _hacs(hass).repositories.list_all
+            if _hacs_matches(repository, search)
+        ]
+        found.sort(key=lambda r: (not r["downloaded"], r["name"] or ""))
+        return {
+            "count": len(found),
+            "repositories": found[:MAX_HACS_RESULTS],
+            "truncated": len(found) > MAX_HACS_RESULTS,
+        }
+
+
+class DownloadHacsRepositoryTool(AdminTool):
+    """Download or update a HACS repository."""
+
+    name = "download_hacs_repository"
+    description = (
+        "Download a HACS repository by its repository_id from "
+        "list_hacs_repositories, or update it if it is already downloaded. Gets the "
+        "newest version unless a version is given. HACS adds dashboard cards to the "
+        "dashboard resources itself; they work once the page is refreshed. "
+        "Integrations need a Home Assistant restart. This installs code from "
+        "GitHub, so only call after the user has confirmed the exact repository "
+        "and version."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("repository_id"): cv.string,
+            vol.Optional("version"): cv.string,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        hacs = _hacs(hass)
+        repository = hacs.repositories.get_by_id(args["repository_id"])
+        if repository is None:
+            raise HomeAssistantError(
+                "No HACS repository with that repository_id. "
+                "Use list_hacs_repositories."
+            )
+        was_downloaded = repository.data.installed
+        previous_version = repository.display_installed_version
+        try:
+            # Fetch the newest release information first, as HACS's refresh does.
+            await repository.update_repository(ignore_issues=True, force=True)
+            await repository.async_download_repository(ref=args.get("version"))
+        except Exception as err:  # noqa: BLE001 - HACS raises its own exception types
+            raise HomeAssistantError(f"HACS could not download it: {err}") from err
+        if not was_downloaded:
+            await hacs.async_recreate_entities()
+        await hacs.data.async_write()
+        info = _hacs_repository_info(repository)
+        next_step = {
+            "plugin": "Refresh the dashboard page in the browser or app",
+            "integration": "Restart Home Assistant",
+        }.get(info["category"])
+        return {
+            "success": True,
+            **info,
+            "previous_version": previous_version if was_downloaded else None,
+            "next_step": next_step,
+        }
+
+
+async def _async_resources(hass: HomeAssistant) -> Any:
+    """Return the UI-managed dashboard resources collection, loaded."""
+    from homeassistant.components.lovelace.const import LOVELACE_DATA
+
+    if LOVELACE_DATA not in hass.data:
+        raise HomeAssistantError("The lovelace integration is not loaded")
+    resources = hass.data[LOVELACE_DATA].resources
+    if not hasattr(resources, "async_delete_item"):
+        raise HomeAssistantError(
+            "Dashboard resources are defined in YAML, so they can't be changed here"
+        )
+    if not resources.loaded:
+        await resources.async_load()
+        resources.loaded = True
+    return resources
+
+
+class ListDashboardResourcesTool(AdminTool):
+    """List the files dashboards load, such as custom cards."""
+
+    name = "list_dashboard_resources"
+    description = (
+        "List the dashboard resources: the JavaScript modules and CSS files that "
+        "dashboards load, such as custom cards from HACS (/hacsfiles/...). A custom "
+        "card shows a configuration error when its file is missing here, or when "
+        "an old file for the same card is loaded."
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        resources = await _async_resources(hass)
+        return {
+            "resources": [
+                {"resource_id": item["id"], "url": item["url"], "type": item["type"]}
+                for item in resources.async_items()
+            ]
+        }
+
+
+class RemoveDashboardResourceTool(AdminTool):
+    """Remove a dashboard resource, such as an old custom card file."""
+
+    name = "remove_dashboard_resource"
+    description = (
+        "Remove a dashboard resource by its resource_id from "
+        "list_dashboard_resources, for example an old custom card file left behind "
+        "after an update. Cards that need it stop working. Only call after the "
+        "user has confirmed the change."
+    )
+    parameters = vol.Schema({vol.Required("resource_id"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        resources = await _async_resources(hass)
+        item = next(
+            (i for i in resources.async_items() if i["id"] == args["resource_id"]),
+            None,
+        )
+        if item is None:
+            raise HomeAssistantError(
+                "No dashboard resource with that resource_id. "
+                "Use list_dashboard_resources."
+            )
+        await resources.async_delete_item(args["resource_id"])
+        return {"success": True, "removed_url": item["url"]}
+
+
 TUYA_LOCAL = "tuya_local"
 TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
 TUYA_FOLLOW_INTERVAL = timedelta(minutes=5)
@@ -801,6 +990,10 @@ class AlfredAdminAPI(llm.API):
             FindEntitiesTool(),
             RenameEntityTool(),
             RenameDeviceTool(),
+            ListHacsRepositoriesTool(),
+            DownloadHacsRepositoryTool(),
+            ListDashboardResourcesTool(),
+            RemoveDashboardResourceTool(),
             CheckTuyaLocalDevicesTool(),
             UpdateTuyaLocalDeviceTool(),
         ]

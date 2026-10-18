@@ -81,6 +81,10 @@ Assistant**, also select **Alfred admin**. Alfred can then:
 - rename entities and devices without changing their entity ids, so automations and
   dashboards keep working ("Call switch 2 of Tania's office switch Tania's Office
   Bathroom Light")
+- install and update HACS dashboard cards and integrations, and clean up old dashboard
+  resources that make a custom card show a configuration error ("Update the remote card
+  in HACS"). HACS downloads code from GitHub, so Alfred names the repository and version
+  and waits for your yes first. Integrations need a restart afterwards.
 - check which Tuya Local devices can't connect, compare the IP address saved for each
   one with the address it announces on your network, and update the IP address or
   protocol version ("Why are my Tuya Local bulbs unavailable?")
