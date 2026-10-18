@@ -78,6 +78,9 @@ Assistant**, also select **Alfred admin**. Alfred can then:
   the Main Dash"). The version before each change is kept, so Alfred can undo it.
 - look up entities with the integration and device they come from ("Which entities
   come from Tuya Local?")
+- rename entities and devices without changing their entity ids, so automations and
+  dashboards keep working ("Call switch 2 of Tania's office switch Tania's Office
+  Bathroom Light")
 - check which Tuya Local devices can't connect, compare the IP address saved for each
   one with the address it announces on your network, and update the IP address or
   protocol version ("Why are my Tuya Local bulbs unavailable?")

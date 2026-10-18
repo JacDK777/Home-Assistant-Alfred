@@ -1,7 +1,8 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
 Its tools read the error log, edit UI-managed automations, scripts and dashboards,
-look up entities, check and fix Tuya Local connections and file GitHub issues.
+look up and rename entities and devices, check and fix Tuya Local connections and
+file GitHub issues.
 They are only offered to Home Assistant administrators.
 """
 
@@ -481,6 +482,68 @@ class FindEntitiesTool(AdminTool):
         }
 
 
+class RenameEntityTool(AdminTool):
+    """Change the name an entity is shown with."""
+
+    name = "rename_entity"
+    description = (
+        "Change the display name of an entity, by its entity_id from find_entities. "
+        "The entity_id stays the same, so automations and dashboards keep working. "
+        "An empty name goes back to the integration's own name. Only call after "
+        "the user has confirmed the change."
+    )
+    parameters = vol.Schema(
+        {vol.Required("entity_id"): cv.entity_id, vol.Required("name"): str}
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        entities = er.async_get(hass)
+        if entities.async_get(args["entity_id"]) is None:
+            raise HomeAssistantError(
+                "No entity with that entity_id in the entity registry. "
+                "Use find_entities."
+            )
+        name = args["name"].strip() or None
+        entry = entities.async_update_entity(args["entity_id"], name=name)
+        return {
+            "success": True,
+            "entity_id": entry.entity_id,
+            "name": entry.name or entry.original_name,
+        }
+
+
+class RenameDeviceTool(AdminTool):
+    """Change the name a device is shown with."""
+
+    name = "rename_device"
+    description = (
+        "Change the display name of a device, by its device_id from find_entities. "
+        "Its entity ids stay the same. An empty name goes back to the "
+        "integration's own name. Only call after the user has confirmed the change."
+    )
+    parameters = vol.Schema(
+        {vol.Required("device_id"): cv.string, vol.Required("name"): str}
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        devices = dr.async_get(hass)
+        if devices.async_get(args["device_id"]) is None:
+            raise HomeAssistantError(
+                "No device with that device_id. Use find_entities."
+            )
+        name = args["name"].strip() or None
+        device = devices.async_update_device(args["device_id"], name_by_user=name)
+        return {
+            "success": True,
+            "device_id": device.id,
+            "name": device.name_by_user or device.name,
+        }
+
+
 TUYA_LOCAL = "tuya_local"
 TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
 TUYA_FOLLOW_INTERVAL = timedelta(minutes=5)
@@ -736,6 +799,8 @@ class AlfredAdminAPI(llm.API):
             GetDashboardTool(),
             SaveDashboardTool(),
             FindEntitiesTool(),
+            RenameEntityTool(),
+            RenameDeviceTool(),
             CheckTuyaLocalDevicesTool(),
             UpdateTuyaLocalDeviceTool(),
         ]

@@ -69,7 +69,7 @@ async def _api(hass: HomeAssistant, user: MockUser | None) -> llm.APIInstance:
     )
 
 
-async def _call(api: llm.APIInstance, name: str, **args: Any) -> Any:
+async def _call(api: llm.APIInstance, name: str, /, **args: Any) -> Any:
     result = await api.async_call_tool(llm.ToolInput(tool_name=name, tool_args=args))
     return getattr(result, "data", result)
 
@@ -90,6 +90,8 @@ async def test_admin_tools_only_for_admins(
         "get_dashboard",
         "save_dashboard",
         "find_entities",
+        "rename_entity",
+        "rename_device",
         "check_tuya_local_devices",
         "update_tuya_local_device",
     }
@@ -435,3 +437,58 @@ async def test_follow_tuya_local_ips(
         side_effect=HomeAssistantError("busy"),
     ):
         assert await async_follow_tuya_local_ips(hass) == []
+
+
+async def test_rename_entity_and_device(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Entities and devices can be renamed and set back to their own name."""
+    entry = MockConfigEntry(domain="tuya_local")
+    entry.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    device = devices.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("tuya_local", "abc123")},
+        name="Tania Office Light Switch 2",
+    )
+    entities = er.async_get(hass)
+    entities.async_get_or_create(
+        "switch",
+        "tuya_local",
+        "abc123-switch-1",
+        suggested_object_id="tania_office_switch_1",
+        original_name="Switch 1",
+        device_id=device.id,
+    )
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(
+        api,
+        "rename_entity",
+        entity_id="switch.tania_office_switch_1",
+        name="Tania's Office Light",
+    )
+    assert result == {
+        "success": True,
+        "entity_id": "switch.tania_office_switch_1",
+        "name": "Tania's Office Light",
+    }
+    assert entities.async_get("switch.tania_office_switch_1").name == (
+        "Tania's Office Light"
+    )
+    result = await _call(
+        api, "rename_entity", entity_id="switch.tania_office_switch_1", name=" "
+    )
+    assert result["name"] == "Switch 1"
+    with pytest.raises(HomeAssistantError, match="No entity"):
+        await _call(api, "rename_entity", entity_id="switch.nope", name="x")
+
+    result = await _call(
+        api, "rename_device", device_id=device.id, name="Tania Office Switch"
+    )
+    assert result["name"] == "Tania Office Switch"
+    assert devices.async_get(device.id).name_by_user == "Tania Office Switch"
+    result = await _call(api, "rename_device", device_id=device.id, name="")
+    assert result["name"] == "Tania Office Light Switch 2"
+    with pytest.raises(HomeAssistantError, match="No device"):
+        await _call(api, "rename_device", device_id="nope", name="x")
