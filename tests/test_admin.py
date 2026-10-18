@@ -8,6 +8,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     MockUser,
+    async_fire_time_changed,
     async_mock_service,
 )
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -18,7 +19,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 from homeassistant.setup import async_setup_component
 
-from custom_components.alfred.admin import ADMIN_API_ID
+from custom_components.alfred.admin import (
+    ADMIN_API_ID,
+    TUYA_FOLLOW_INTERVAL,
+    async_follow_tuya_local_ips,
+)
 from custom_components.alfred.const import CONF_GITHUB_TOKEN
 
 
@@ -371,3 +376,62 @@ async def test_tuya_local_devices(
             entry_id=bulb.entry_id,
             protocol_version="9",
         )
+
+
+async def test_follow_tuya_local_ips(
+    hass: HomeAssistant, setup_alfred, freezer
+) -> None:
+    """Disconnected Tuya Local devices are moved to the IP address they announce."""
+    moved = MockConfigEntry(
+        domain="tuya_local",
+        title="Kitchen DL 1",
+        data={"device_id": "bulb1", "host": "192.168.68.20"},
+        options={"host": "192.168.68.20"},
+    )
+    silent = MockConfigEntry(
+        domain="tuya_local",
+        title="Kitchen DL 2",
+        data={"device_id": "bulb2", "host": "192.168.68.21"},
+    )
+    connected = MockConfigEntry(
+        domain="tuya_local",
+        title="Pantry Light 1",
+        data={"device_id": "switch1", "host": "192.168.68.30"},
+    )
+    for entry in (moved, silent, connected):
+        entry.add_to_hass(hass)
+    hass.data["tuya_local"] = {
+        "bulb1": {"device": MagicMock(has_returned_state=False)},
+        "bulb2": {"device": MagicMock(has_returned_state=False)},
+        "switch1": {"device": MagicMock(has_returned_state=True)},
+    }
+    scan = {
+        "bulb1": {"gwId": "bulb1", "ip": "192.168.68.44"},
+        "switch1": {"gwId": "switch1", "ip": "192.168.68.99"},
+    }
+
+    with patch(
+        "custom_components.alfred.admin._scan_lan", return_value=scan
+    ) as scan_lan:
+        freezer.tick(TUYA_FOLLOW_INTERVAL)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+    scan_lan.assert_called_once()
+    assert moved.data["host"] == moved.options["host"] == "192.168.68.44"
+    assert silent.data["host"] == "192.168.68.21"
+    assert connected.data["host"] == "192.168.68.30"
+
+    # Nothing is scanned while every device is connected.
+    hass.data["tuya_local"]["bulb1"]["device"].has_returned_state = True
+    hass.data["tuya_local"]["bulb2"]["device"].has_returned_state = True
+    with patch("custom_components.alfred.admin._scan_lan") as scan_lan:
+        assert await async_follow_tuya_local_ips(hass) == []
+    scan_lan.assert_not_called()
+
+    # A failed scan changes nothing.
+    hass.data["tuya_local"]["bulb2"]["device"].has_returned_state = False
+    with patch(
+        "custom_components.alfred.admin._scan_lan",
+        side_effect=HomeAssistantError("busy"),
+    ):
+        assert await async_follow_tuya_local_ips(hass) == []

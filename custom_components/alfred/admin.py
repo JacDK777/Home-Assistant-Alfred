@@ -7,7 +7,9 @@ They are only offered to Home Assistant administrators.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from typing import Any
 import uuid
 
@@ -24,6 +26,7 @@ from homeassistant.helpers import (
     llm,
     storage,
 )
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util.json import JsonObjectType
 
 from .const import (
@@ -480,6 +483,7 @@ class FindEntitiesTool(AdminTool):
 
 TUYA_LOCAL = "tuya_local"
 TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
+TUYA_FOLLOW_INTERVAL = timedelta(minutes=5)
 
 
 def _scan_lan() -> dict[str, dict[str, Any]]:
@@ -504,6 +508,70 @@ def _tuya_local_connected(hass: HomeAssistant, entry: Any) -> bool:
     key = f"{device_id}/{cid}" if device_id and cid else cid or device_id
     device = (hass.data.get(TUYA_LOCAL, {}).get(key) or {}).get("device")
     return bool(device is not None and device.has_returned_state)
+
+
+def _update_tuya_local_entry(
+    hass: HomeAssistant, entry: Any, changes: dict[str, Any]
+) -> None:
+    """Save a new host or protocol version for a Tuya Local device."""
+    # Tuya Local's options flow stores these in options, which override data,
+    # so write them wherever they take effect. Its update listener reloads it.
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, **changes},
+        options={
+            **entry.options,
+            **{k: v for k, v in changes.items() if k in entry.options},
+        },
+    )
+
+
+async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
+    """Point disconnected Tuya Local devices at the IP address they now announce.
+
+    Returns the names of the devices that were updated.
+    """
+    entries = [
+        entry
+        for entry in hass.config_entries.async_entries(TUYA_LOCAL)
+        if not _tuya_local_connected(hass, entry)
+    ]
+    if not entries:
+        return []
+    try:
+        found = await hass.async_add_executor_job(_scan_lan)
+    except HomeAssistantError as err:
+        LOGGER.debug("Skipping the Tuya Local IP check: %s", err)
+        return []
+    moved = []
+    for entry in entries:
+        config = {**entry.data, **entry.options}
+        ip = (found.get(config.get("device_id")) or {}).get("ip")
+        if ip and ip != config.get("host"):
+            LOGGER.info(
+                "%s moved from %s to %s; updating Tuya Local",
+                entry.title,
+                config.get("host"),
+                ip,
+            )
+            _update_tuya_local_entry(hass, entry, {"host": ip})
+            moved.append(entry.title)
+    return moved
+
+
+def async_start_tuya_local_ip_follow(hass: HomeAssistant) -> Callable[[], None]:
+    """Check for moved Tuya Local devices every few minutes; return a stop callback."""
+    lock = asyncio.Lock()
+
+    async def _async_check(now: datetime) -> None:
+        if lock.locked():
+            return
+        async with lock:
+            await async_follow_tuya_local_ips(hass)
+
+    return async_track_time_interval(
+        hass, _async_check, TUYA_FOLLOW_INTERVAL, name="Alfred Tuya Local IP follow"
+    )
 
 
 class CheckTuyaLocalDevicesTool(AdminTool):
@@ -582,16 +650,7 @@ class UpdateTuyaLocalDeviceTool(AdminTool):
             )
         if not changes:
             raise HomeAssistantError("Give a host, a protocol_version or both")
-        # Tuya Local's options flow stores these in options, which override data,
-        # so write them wherever they take effect. Its update listener reloads it.
-        hass.config_entries.async_update_entry(
-            entry,
-            data={**entry.data, **changes},
-            options={
-                **entry.options,
-                **{k: v for k, v in changes.items() if k in entry.options},
-            },
-        )
+        _update_tuya_local_entry(hass, entry, changes)
         return {"success": True, "name": entry.title, **changes}
 
 

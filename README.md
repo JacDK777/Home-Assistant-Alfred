@@ -91,6 +91,16 @@ admin tools. Alfred is told to describe every change and wait for your yes befor
 saving it, and Home Assistant validates each automation and script before it is
 written.
 
+### Tuya Local devices that change IP address
+
+Tuya Local connects to each device at a fixed IP address, so a device that gets a new
+address from the router (for example after a power cut) stays unavailable. Every five
+minutes, if any Tuya Local device is disconnected, Alfred listens for the devices
+announcing themselves on your network and points each disconnected one at the address
+it now announces. Each change is written to the Home Assistant log. This runs whether or
+not the admin tools are selected. Reserving each device's address in your router stops
+the addresses changing in the first place.
+
 ## Cost
 
 Alfred uses prompt caching. Your exposed-device list, the tool definitions and the conversation so
