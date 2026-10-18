@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-17
+**Last updated:** 2026-10-18
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -19,7 +19,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 | Owner | Jacques De Kock (GitHub `JacDK777`) |
 | Home Assistant version | 2026.10.2 (from `.HA_VERSION`) |
 | Config folder in the Terminal & SSH add-on | `/homeassistant` (not `/config` on this version) |
-| Network | Home LAN is `192.168.68.x` (devices seen at .101, .115); NAS at `192.168.0.153` |
+| Network | TP-Link Deco mesh (Deco app; login in credentials). LAN `192.168.68.x`; HA at `192.168.68.148:8123`; NAS at `192.168.0.153` |
+| Remote access | Home Assistant Cloud (Nabu Casa); URL in credentials |
 | Claude project | "Alfred and Home Assistant" on claude.ai |
 | Phone | Samsung S22 Ultra; side button → Digital assistant → Home Assistant Assist (Alfred) |
 
@@ -88,13 +89,17 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - Plugs: Oven Mains, Heat Mat socket 1, Grow Domes, Wine Cellar "Open Switch".
   - Lights (BNETA = Tuya): Kitchen, Kitchen Pendants, Dining, Dining Room DL2, Chandelier, Main Bedroom,
     Great Room, Living Room, Braai Room DL1, Tania Office.
+  - Smart bulbs lose power and show "error 901: Unable to Connect" when the wall switch feeding them is off.
+    Known feeds: **Main Bedroom Light Switch 1** → Main Bedroom DL 1–5.
   - Ginny vacuum: still Tuya cloud only (not added in Tuya Local).
   - Temp & Humidity sensor: if battery powered it stays on the cloud Tuya integration.
 - **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
   (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
-- **TCL TVs (3)** via Chromecast; Bedroom TV at 192.168.68.101 often unreachable. Living Room TV shows
-  as three duplicate entities.
-- **Rain Bird** (6 zones), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
+- **TCL TVs (3)** via Chromecast/DLNA: Living Room TCL TV at 192.168.68.101, Bedroom TV at 192.168.68.167. Cast can turn
+  them off but not on (they drop off Wi-Fi in standby). Fix: enable network standby on each TV, add the
+  **Android TV Remote** integration and point dashboard power buttons at it (or use an IR blaster).
+  Living Room TV shows as three duplicate entities.
+- **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
 ## 6. Automations (UI-managed, not in git)
@@ -108,6 +113,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 | Water Tank Notification | `automation.water_tank_notification_2` | off |
 | Grow Lights Timer | `automation.grow_lights_timer` | on |
 
+Garage Door Open/Close has a template condition (only on↔off flips) so restarts/reconnects no longer open the door (fixed 2026-10-17).
+
 No scripts. Grow Lights Timer and both garage-light automations point at Tuya devices and need
 repointing to the Tuya Local entities once the old Tuya integration is removed.
 
@@ -116,16 +123,20 @@ repointing to the Tuya Local entities once the old Tuya integration is removed.
 - Main Dash → Tuya Local swap: second dry run of `tuya_swap.py` pending, then `--apply` and restart.
 - Remove the old Tuya cloud integration once everything works locally; then repoint the three automations.
 - Braai Room DL1 and Tania Office Light unavailable; Living Room DL1/DL3 not yet added to Tuya Local.
+- **Grow Lights Timer fails**: "The Tuya cloud rejected the command", and the old cloud **Tuya** integration
+  (`jdk.eendrag@gmail.com`) needs re-authentication. Repoint the automation to the Tuya Local Grow Domes entity
+  (preferred) or re-authenticate the Tuya integration.
+- TVs can't be turned on from HA (see section 5).
 - `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
-- `configuration.yaml` `shell_command.mount_nas_folder` has the NAS username and password in plain text,
-  and that file is in git. Move them into `secrets.yaml` (`!secret`) and consider changing the NAS password.
+- NAS password moved to `secrets.yaml` (config PR #2), but it is still in git history: change the NAS password.
 - Ring camera FFmpeg timeout / push client "Incorrect padding" errors.
 - Aircon model number needed to choose a local integration.
 - GitHub token for Git pull expires about **2027-10-17** (1-year fine-grained PAT, Contents read/write,
   only `home-assistant-config`). Renew before then and paste the new one into the Git pull password field.
-  The token was visible in a screenshot; regenerating it is recommended.
+  Regenerated on 2026-10-17 after it appeared in a screenshot.
 - Alfred: no GitHub release yet (HACS shows a commit id); no `main` branch.
 
 ## 8. Change log
 
-- 2026-10-17: Hand-over doc created.
+- 2026-10-18: Rain Bird IP and fix, TV power-on cause, Grow Lights Timer failing on Tuya cloud, network/remote-access details, GitHub token regenerated.
+- 2026-10-17: Hand-over doc created. Credentials collected; NAS mount command moved to secrets.yaml (config PR #2). Garage door no longer opens on HA/Tuya restarts.
