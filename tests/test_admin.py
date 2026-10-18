@@ -2,7 +2,7 @@
 
 import logging
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -85,6 +85,8 @@ async def test_admin_tools_only_for_admins(
         "get_dashboard",
         "save_dashboard",
         "find_entities",
+        "check_tuya_local_devices",
+        "update_tuya_local_device",
     }
 
     hass_admin_user.groups = []
@@ -297,3 +299,75 @@ async def test_find_entities(
     ]
     result = await _call(api, "find_entities", domain="switch")
     assert [e["entity_id"] for e in result["entities"]] == ["switch.great_room_1"]
+
+
+async def test_tuya_local_devices(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Tuya Local devices are checked against the LAN scan and can be updated."""
+    api = await _api(hass, hass_admin_user)
+    with pytest.raises(HomeAssistantError, match="no devices"):
+        await _call(api, "check_tuya_local_devices")
+
+    bulb = MockConfigEntry(
+        domain="tuya_local",
+        title="Chandelier LB 5",
+        data={"device_id": "bulb1", "host": "192.168.68.20", "protocol_version": 3.3},
+        options={"host": "192.168.68.20", "protocol_version": 3.3},
+    )
+    switch = MockConfigEntry(
+        domain="tuya_local",
+        title="Pantry Light 1",
+        data={"device_id": "switch1", "host": "192.168.68.30"},
+    )
+    bulb.add_to_hass(hass)
+    switch.add_to_hass(hass)
+    hass.data["tuya_local"] = {
+        "bulb1": {"device": MagicMock(has_returned_state=False)},
+        "switch1": {"device": MagicMock(has_returned_state=True)},
+    }
+    scan = {"bulb1": {"gwId": "bulb1", "ip": "192.168.68.44", "version": "3.4"}}
+
+    with patch("custom_components.alfred.admin._scan_lan", return_value=scan):
+        result = await _call(api, "check_tuya_local_devices")
+    assert result["count"] == 2
+    assert result["devices"][0] == {
+        "entry_id": bulb.entry_id,
+        "name": "Chandelier LB 5",
+        "device_id": "bulb1",
+        "sub_device": False,
+        "host": "192.168.68.20",
+        "protocol_version": 3.3,
+        "connected": False,
+        "announced_ip": "192.168.68.44",
+        "announced_version": "3.4",
+    }
+    assert result["devices"][1]["connected"] is True
+    assert result["devices"][1]["announced_ip"] is None
+
+    result = await _call(
+        api,
+        "update_tuya_local_device",
+        entry_id=bulb.entry_id,
+        host="192.168.68.44",
+        protocol_version="3.4",
+    )
+    assert result["success"] is True
+    assert bulb.data["host"] == bulb.options["host"] == "192.168.68.44"
+    assert bulb.data["protocol_version"] == bulb.options["protocol_version"] == 3.4
+
+    await _call(api, "update_tuya_local_device", entry_id=switch.entry_id, host="h2")
+    assert switch.data["host"] == "h2"
+    assert "host" not in switch.options
+
+    with pytest.raises(HomeAssistantError, match="Give a host"):
+        await _call(api, "update_tuya_local_device", entry_id=bulb.entry_id)
+    with pytest.raises(HomeAssistantError, match="No Tuya Local device"):
+        await _call(api, "update_tuya_local_device", entry_id="nope", host="h")
+    with pytest.raises(vol.Invalid):
+        await _call(
+            api,
+            "update_tuya_local_device",
+            entry_id=bulb.entry_id,
+            protocol_version="9",
+        )
