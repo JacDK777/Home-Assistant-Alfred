@@ -92,6 +92,8 @@ for eid in tuya_used:
         cands = [l for l in on_dev if l["entity_id"].split(".")[0] in SWAPPABLE]
         if cands:
             note = "  [switch/light swap, check]"
+    if not cands and on_dev:  # last resort: any entity on the same physical device
+        cands, note = on_dev, "  [different type on same device, check]"
     if not cands:  # fall back to whole-name match across all Tuya Local entities
         full = lambda e, d: norm(f"{dname(d)} {ename(e)}")
         target = full(ce, cdev)
@@ -123,9 +125,26 @@ if unmatched:
     for eid in unmatched:
         print("  ", eid, "-", by_id[eid].get("original_name") or "")
 
+# Tuya cloud devices referenced directly (device cards, tile features, ...)
+for did in set(re.findall(r'"device_id":\s*"([0-9a-f]{32})"', text)):
+    cdev = devs.get(did)
+    if did in dev_map or not cdev or not any(i[0] == "tuya" for i in cdev.get("identifiers", [])):
+        continue
+    twin = [d for d in devs.values() if d["id"] != did and any(i[0] == "tuya_local" for i in d.get("identifiers", []))
+            and dev_matches(cdev, d)]
+    if twin:
+        dev_map[did] = twin[0]["id"]
+        print(f"  device {dname(cdev)!r:40} -> Tuya Local device {dname(twin[0])!r}")
+    else:
+        print(f"  device {dname(cdev)!r:40} has no Tuya Local device (left unchanged)")
+
 new = text
 for old, rep in {**mapping, **dev_map}.items():
     new = re.sub(r"(?<![\w.])" + re.escape(old) + r"(?![\w])", rep, new)
+
+left = [e for e in set(re.findall(r"\b[a-z_]+\.[a-z0-9_]+\b", new)) if e in by_id and by_id[e]["platform"] == "tuya"]
+print(f"After the swap, {len(left)} Tuya cloud entities would remain on the dashboard"
+      + (": " + ", ".join(sorted(left)) if left else "."))
 
 if not APPLY:
     print("\nDry run only, nothing changed. Re-run with --apply to swap them.")
