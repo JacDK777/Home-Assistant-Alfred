@@ -2,7 +2,7 @@
 
 import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -92,6 +92,10 @@ async def test_admin_tools_only_for_admins(
         "find_entities",
         "rename_entity",
         "rename_device",
+        "list_hacs_repositories",
+        "download_hacs_repository",
+        "list_dashboard_resources",
+        "remove_dashboard_resource",
         "check_tuya_local_devices",
         "update_tuya_local_device",
     }
@@ -492,3 +496,133 @@ async def test_rename_entity_and_device(
     assert result["name"] == "Tania Office Light Switch 2"
     with pytest.raises(HomeAssistantError, match="No device"):
         await _call(api, "rename_device", device_id="nope", name="x")
+
+
+def _hacs_repository(
+    repository_id: str,
+    full_name: str,
+    category: str,
+    installed: str | None,
+    available: str,
+) -> MagicMock:
+    """A stand-in for a HACS repository object."""
+    repository = MagicMock()
+    repository.data.id = repository_id
+    repository.data.full_name = full_name
+    repository.data.category = category
+    repository.data.description = f"{full_name} description"
+    repository.data.installed = installed is not None
+    repository.display_name = full_name.split("/")[1]
+    repository.display_installed_version = installed
+    repository.display_available_version = available
+    repository.pending_update = installed is not None and installed != available
+
+    async def _download(ref: str | None = None) -> None:
+        repository.data.installed = True
+        repository.display_installed_version = ref or available
+        repository.pending_update = False
+
+    repository.update_repository = AsyncMock()
+    repository.async_download_repository = AsyncMock(side_effect=_download)
+    return repository
+
+
+async def test_hacs_repositories(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """HACS repositories are listed, searched, downloaded and updated."""
+    api = await _api(hass, hass_admin_user)
+    with pytest.raises(HomeAssistantError, match="HACS is not installed"):
+        await _call(api, "list_hacs_repositories")
+
+    remote = _hacs_repository(
+        "505459170", "Nerwyn/universal-remote-card", "plugin", "3.9.4", "4.11.5"
+    )
+    mushroom = _hacs_repository(
+        "444350375", "piitaya/lovelace-mushroom", "plugin", None, "5.0.0"
+    )
+    hacs = MagicMock()
+    hacs.repositories.list_all = [remote, mushroom]
+    hacs.repositories.get_by_id = {"505459170": remote, "444350375": mushroom}.get
+    hacs.async_recreate_entities = AsyncMock()
+    hacs.data.async_write = AsyncMock()
+    hass.data["hacs"] = hacs
+
+    result = await _call(api, "list_hacs_repositories")
+    assert result["count"] == 1
+    assert result["repositories"][0] == {
+        "repository_id": "505459170",
+        "full_name": "Nerwyn/universal-remote-card",
+        "name": "universal-remote-card",
+        "category": "plugin",
+        "downloaded": True,
+        "installed_version": "3.9.4",
+        "available_version": "4.11.5",
+        "update_available": True,
+    }
+    result = await _call(api, "list_hacs_repositories", search="Mushroom")
+    assert [r["repository_id"] for r in result["repositories"]] == ["444350375"]
+
+    result = await _call(api, "download_hacs_repository", repository_id="505459170")
+    assert result["success"] is True
+    assert result["previous_version"] == "3.9.4"
+    assert result["installed_version"] == "4.11.5"
+    assert result["next_step"] == "Refresh the dashboard page in the browser or app"
+    remote.update_repository.assert_awaited_once_with(ignore_issues=True, force=True)
+    remote.async_download_repository.assert_awaited_once_with(ref=None)
+    hacs.async_recreate_entities.assert_not_awaited()
+
+    result = await _call(
+        api, "download_hacs_repository", repository_id="444350375", version="4.9.0"
+    )
+    assert result["previous_version"] is None
+    assert result["installed_version"] == "4.9.0"
+    hacs.async_recreate_entities.assert_awaited_once()
+    assert hacs.data.async_write.await_count == 2
+
+    mushroom.async_download_repository.side_effect = Exception("rate limited")
+    with pytest.raises(HomeAssistantError, match="rate limited"):
+        await _call(api, "download_hacs_repository", repository_id="444350375")
+    with pytest.raises(HomeAssistantError, match="No HACS repository"):
+        await _call(api, "download_hacs_repository", repository_id="1")
+
+
+async def test_dashboard_resources(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, hass_storage
+) -> None:
+    """Dashboard resources are listed and an old one can be removed."""
+    hass_storage["lovelace_resources"] = {
+        "version": 1,
+        "key": "lovelace_resources",
+        "data": {
+            "items": [
+                {
+                    "id": "old",
+                    "type": "module",
+                    "url": "/hacsfiles/android-tv-card/android-tv-card.min.js",
+                },
+                {
+                    "id": "new",
+                    "type": "module",
+                    "url": "/hacsfiles/universal-remote-card/"
+                    "universal-remote-card.min.js?hacstag=50545917041105",
+                },
+            ]
+        },
+    }
+    assert await async_setup_component(hass, "lovelace", {})
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(api, "list_dashboard_resources")
+    assert [r["resource_id"] for r in result["resources"]] == ["old", "new"]
+    assert result["resources"][0]["type"] == "module"
+
+    result = await _call(api, "remove_dashboard_resource", resource_id="old")
+    assert result == {
+        "success": True,
+        "removed_url": "/hacsfiles/android-tv-card/android-tv-card.min.js",
+    }
+    result = await _call(api, "list_dashboard_resources")
+    assert [r["resource_id"] for r in result["resources"]] == ["new"]
+    with pytest.raises(HomeAssistantError, match="No dashboard resource"):
+        await _call(api, "remove_dashboard_resource", resource_id="old")
