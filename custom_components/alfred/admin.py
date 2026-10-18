@@ -1,8 +1,8 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
 Its tools read the error log, edit UI-managed automations, scripts and dashboards,
-look up entities and file GitHub issues. They are only offered to Home Assistant
-administrators.
+look up entities, check and fix Tuya Local connections and file GitHub issues.
+They are only offered to Home Assistant administrators.
 """
 
 from __future__ import annotations
@@ -478,6 +478,123 @@ class FindEntitiesTool(AdminTool):
         }
 
 
+TUYA_LOCAL = "tuya_local"
+TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
+
+
+def _scan_lan() -> dict[str, dict[str, Any]]:
+    """Listen for Tuya devices announcing themselves on the LAN (blocking).
+
+    Returns tinytuya's scan results keyed by device id.
+    """
+    try:
+        import tinytuya
+    except ImportError:
+        raise HomeAssistantError("Tuya Local is not installed") from None
+    try:
+        found = tinytuya.deviceScan(verbose=False, poll=False)
+    except OSError as err:
+        raise HomeAssistantError(f"The network scan failed: {err}") from err
+    return {info["gwId"]: info for info in found.values() if info.get("gwId")}
+
+
+def _tuya_local_connected(hass: HomeAssistant, entry: Any) -> bool:
+    """Whether Tuya Local has had a reply from the device."""
+    device_id, cid = entry.data.get("device_id"), entry.data.get("device_cid")
+    key = f"{device_id}/{cid}" if device_id and cid else cid or device_id
+    device = (hass.data.get(TUYA_LOCAL, {}).get(key) or {}).get("device")
+    return bool(device is not None and device.has_returned_state)
+
+
+class CheckTuyaLocalDevicesTool(AdminTool):
+    """Compare each Tuya Local device's saved address with the one it announces."""
+
+    name = "check_tuya_local_devices"
+    description = (
+        "Check every Tuya Local device: the IP address (host) and protocol version "
+        "saved in Tuya Local, whether it is connected, and the IP address and "
+        "version the device is announcing on the network right now (takes about "
+        "20 seconds). A device whose announced_ip differs from host needs "
+        "update_tuya_local_device. A device that announces nothing is switched "
+        "off, offline or on another network."
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        entries = hass.config_entries.async_entries(TUYA_LOCAL)
+        if not entries:
+            raise HomeAssistantError("Tuya Local has no devices set up")
+        found = await hass.async_add_executor_job(_scan_lan)
+        devices = []
+        for entry in entries:
+            config = {**entry.data, **entry.options}
+            announced = found.get(config.get("device_id")) or {}
+            devices.append(
+                {
+                    "entry_id": entry.entry_id,
+                    "name": entry.title,
+                    "device_id": config.get("device_id"),
+                    "sub_device": bool(config.get("device_cid")),
+                    "host": config.get("host"),
+                    "protocol_version": config.get("protocol_version"),
+                    "connected": _tuya_local_connected(hass, entry),
+                    "announced_ip": announced.get("ip"),
+                    "announced_version": announced.get("version"),
+                }
+            )
+        devices.sort(key=lambda d: (d["connected"], d["name"] or ""))
+        return {"count": len(devices), "devices": devices}
+
+
+class UpdateTuyaLocalDeviceTool(AdminTool):
+    """Change the IP address or protocol version Tuya Local uses for a device."""
+
+    name = "update_tuya_local_device"
+    description = (
+        "Change the IP address (host) and/or protocol version Tuya Local uses for "
+        "one device, by the entry_id from check_tuya_local_devices. The device "
+        "reconnects straight away. Only call after the user has confirmed the "
+        "change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("entry_id"): cv.string,
+            vol.Optional("host"): cv.string,
+            vol.Optional("protocol_version"): vol.In(TUYA_PROTOCOLS),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        entry = hass.config_entries.async_get_entry(args["entry_id"])
+        if entry is None or entry.domain != TUYA_LOCAL:
+            raise HomeAssistantError(
+                "No Tuya Local device with that entry_id. Use check_tuya_local_devices."
+            )
+        changes: dict[str, Any] = {}
+        if host := args.get("host"):
+            changes["host"] = host
+        if version := args.get("protocol_version"):
+            changes["protocol_version"] = (
+                version if version == "auto" else float(version)
+            )
+        if not changes:
+            raise HomeAssistantError("Give a host, a protocol_version or both")
+        # Tuya Local's options flow stores these in options, which override data,
+        # so write them wherever they take effect. Its update listener reloads it.
+        hass.config_entries.async_update_entry(
+            entry,
+            data={**entry.data, **changes},
+            options={
+                **entry.options,
+                **{k: v for k, v in changes.items() if k in entry.options},
+            },
+        )
+        return {"success": True, "name": entry.title, **changes}
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -560,6 +677,8 @@ class AlfredAdminAPI(llm.API):
             GetDashboardTool(),
             SaveDashboardTool(),
             FindEntitiesTool(),
+            CheckTuyaLocalDevicesTool(),
+            UpdateTuyaLocalDeviceTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO
