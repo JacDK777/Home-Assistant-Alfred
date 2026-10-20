@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-18 (11:15)
+**Last updated:** 2026-10-19 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -50,12 +50,14 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.6.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.7.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
   #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
   #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
   update_tuya_local_device, #9 auto-reconnect of Tuya Local devices to their new IP every 5 min,
-  #10 rename_entity / rename_device.
+  #10 rename_entity / rename_device, #12 HACS tools (list_hacs_repositories, download_hacs_repository)
+  and dashboard resource tools (list/remove_dashboard_resource). Alfred always names the exact version and
+  waits for a yes before downloading anything from HACS.
 - After updating Alfred (HACS redownload + restart), start a **new Claude thread** to see the new tools.
 - `scripts/tuya_swap.py` (merged in #7): swaps Tuya cloud entities
   on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
@@ -108,9 +110,12 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 - **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
   (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
 - **TCL TVs (3)** via Chromecast/DLNA: Living Room TCL TV at 192.168.68.101, Bedroom TV at 192.168.68.167. Cast can turn
-  them off but not on (they drop off Wi-Fi in standby). Fix: enable network standby on each TV, add the
-  **Android TV Remote** integration and point dashboard power buttons at it (or use an IR blaster).
+  them off but not on (they drop off Wi-Fi in standby). **Android TV Remote** integration is now added for both
+  (`remote.living_room_tcl_tv` / `media_player.living_room_tcl_tv_2`, `remote.bedroom_tv` / `media_player.bedroom_tv`).
   Living Room TV shows as three duplicate entities.
+  - **Remotes** dashboard: TV remotes use Universal Remote Card 4.12.1 (HACS); old android-tv-card / tv-card
+    resources removed. Keyboard buttons use live typing; scripts `script.living_room_tv_type_text` and
+    `script.bedroom_tv_type_text` send text. Live typing needs **Enable IME** on (Android TV Remote → Configure).
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
@@ -148,6 +153,9 @@ No scripts.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
+  waiting on the user in the "Remote card update and live typing" thread. Optional restyle of both remotes offered.
+- Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
 - `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
 - NAS password moved to `secrets.yaml` (config PR #2), but it is still in git history: change the NAS password.
 - Ring camera FFmpeg timeout / push client "Incorrect padding" errors.
@@ -159,6 +167,7 @@ No scripts.
 
 ## 8. Change log
 
+- 2026-10-19: Alfred 0.7.0 (HACS and dashboard resource tools); Universal Remote Card 4.12.1 with live keyboard; Android TV Remote for both TVs; open remote issues and load-shedding area noted.
 - 2026-10-18 (11:15): Ginny and all automations on Tuya Local; Tuya cloud mostly disabled; garage switch follows door; 4 bulb auto-power-cycle automations; update-available notification.
 - 2026-10-18 (later): Alfred 0.6.0 (dashboard, rename and Tuya Local tools, auto IP follow); Main Dash fully on Tuya Local; 28 bulbs reconnected after IP changes; Tania office names.
 - 2026-10-18: Rain Bird IP and fix, TV power-on cause, Grow Lights Timer failing on Tuya cloud, network/remote-access details, GitHub token regenerated.
