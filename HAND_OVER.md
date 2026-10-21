@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-19 (06:55)
+**Last updated:** 2026-10-21 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -138,21 +138,26 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Tania's Office bulb auto power cycle | `automation.tania_s_office_bulb_auto_power_cycle` | on | See below |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
 
-**Bulb auto power cycle:** when the room's wall switch turns on, wait 2 minutes; if its bulbs are still
-unavailable, notify the JDK phone and power-cycle the switch once. The Great Room switch feeds 23 bulbs,
+**Bulb auto power cycle:** when the room's wall switch turns on, watch its bulbs for up to 5 minutes and stop as
+soon as all connect. Only if a bulb is still unavailable after 5 minutes **and the switch stayed on the whole
+time** does it notify the JDK phone and power-cycle the switch once (10 s off), then wait 10 minutes. It never
+turns on a switch the user turned off (reworked 2026-10-20 after it toggled lights needlessly with a 2-minute check). The Great Room switch feeds 23 bulbs,
 including the kitchen pendants. Added after a second outage on 2026-10-18 (~10:15) where bulbs refused
 connections (error 901) with no IP change until their power was cycled. Avoid using the Smart Life app on the
 home Wi-Fi, which can lock bulbs out of local connections.
 
 **Updates:** Home Assistant does not auto-install Core/OS updates; the notification above asks first.
 
-No scripts.
+Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs).
 
 ## 7. Open items
 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
+  bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
+  or Zigbee/dumb bulbs). Waiting on the user in the "Fix Tuya Local bulbs" thread.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   waiting on the user in the "Remote card update and live typing" thread. Optional restyle of both remotes offered.
 - Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
@@ -167,6 +172,7 @@ No scripts.
 
 ## 8. Change log
 
+- 2026-10-21: Bulb power cycle automations reworked (5-minute watch, never re-enable a switch turned off); bulb root-cause options added; scripts listed.
 - 2026-10-19: Alfred 0.7.0 (HACS and dashboard resource tools); Universal Remote Card 4.12.1 with live keyboard; Android TV Remote for both TVs; open remote issues and load-shedding area noted.
 - 2026-10-18 (11:15): Ginny and all automations on Tuya Local; Tuya cloud mostly disabled; garage switch follows door; 4 bulb auto-power-cycle automations; update-available notification.
 - 2026-10-18 (later): Alfred 0.6.0 (dashboard, rename and Tuya Local tools, auto IP follow); Main Dash fully on Tuya Local; 28 bulbs reconnected after IP changes; Tania office names.
