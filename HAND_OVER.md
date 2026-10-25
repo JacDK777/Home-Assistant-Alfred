@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-23 (06:55)
+**Last updated:** 2026-10-25 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -116,6 +116,13 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - **Remotes** dashboard: TV remotes use Universal Remote Card 4.12.1 (HACS); old android-tv-card / tv-card
     resources removed. Keyboard buttons use live typing; scripts `script.living_room_tv_type_text` and
     `script.bedroom_tv_type_text` send text. Live typing needs **Enable IME** on (Android TV Remote → Configure).
+- **Huckleberry** (baby tracker, Mika): HACS custom repo `Woyken/huckleberry-homeassistant` v0.5.5, added 2026-10-25,
+  signed in with the Huckleberry account (unofficial Firebase API). Device "Mika" (`device_id 3445e23e0b7211c4ef1c664f8163cdb5`):
+  `sensor.mika_sleep/nursing/bottle/diaper/growth/medication`, `switch.mika_sleep_timer`, `switch.mika_nursing_left/right`,
+  `calendar.mika_events`. Actions `huckleberry.log_bottle`, `log_diaper_*`, `log_activity`, `start/complete_sleep` etc.
+  **Mika** dashboard (`dashboard-mika`, UI-managed) has status tiles, quick-log buttons (bottles set to formula) and a history calendar.
+  Voice logging via Alfred: scripts `script.mika_log_bottle`, `mika_log_nappy`, `mika_sleep`, `mika_nursing`, `mika_log_activity`,
+  `mika_log_solids` (UI-managed, need to be exposed to Assist along with the Mika sensors).
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
@@ -148,13 +155,14 @@ home Wi-Fi, which can lock bulbs out of local connections.
 
 **Updates:** Home Assistant does not auto-install Core/OS updates; the notification above asks first.
 
-Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs).
+Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs); six `script.mika_*` Huckleberry voice-logging scripts (section 5).
 
 ## 7. Open items
 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Mika: expose the six `script.mika_*` scripts and Mika sensors to Assist, then test a voice log (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
   or Zigbee/dumb bulbs). Waiting on the user in the "Fix Tuya Local bulbs" thread.
@@ -172,6 +180,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
 - 2026-10-23: Garage Door Open/Close fixed (it sent open then close, so the door stopped partway after the move to Tuya Local).
 - 2026-10-21: Bulb power cycle automations reworked (5-minute watch, never re-enable a switch turned off); bulb root-cause options added; scripts listed.
 - 2026-10-19: Alfred 0.7.0 (HACS and dashboard resource tools); Universal Remote Card 4.12.1 with live keyboard; Android TV Remote for both TVs; open remote issues and load-shedding area noted.
