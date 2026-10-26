@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/alfred-icon.svg" alt="Alfred" width="160"></p>
+
 # Alfred
 
 A Claude-powered butler for Home Assistant. Alfred is a **conversation agent** that plugs into
