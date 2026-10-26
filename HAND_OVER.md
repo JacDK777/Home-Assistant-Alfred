@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-25 (06:55)
+**Last updated:** 2026-10-26 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -120,9 +120,12 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   signed in with the Huckleberry account (unofficial Firebase API). Device "Mika" (`device_id 3445e23e0b7211c4ef1c664f8163cdb5`):
   `sensor.mika_sleep/nursing/bottle/diaper/growth/medication`, `switch.mika_sleep_timer`, `switch.mika_nursing_left/right`,
   `calendar.mika_events`. Actions `huckleberry.log_bottle`, `log_diaper_*`, `log_activity`, `start/complete_sleep` etc.
-  **Mika** dashboard (`dashboard-mika`, UI-managed) has status tiles, quick-log buttons (bottles set to formula) and a history calendar.
-  Voice logging via Alfred: scripts `script.mika_log_bottle`, `mika_log_nappy`, `mika_sleep`, `mika_nursing`, `mika_log_activity`,
-  `mika_log_solids` (UI-managed, need to be exposed to Assist along with the Mika sensors).
+  **Mika** dashboard (`dashboard-mika`, UI-managed) has status tiles, quick-log buttons (bottles are breast milk) and a history calendar.
+  Voice logging via Alfred: scripts `script.mika_log_bottle` (default breast milk), `mika_log_nappy` (wet/dirty/both/dry with pee size, poo size, colour, consistency; refuses and asks if any are missing), `mika_sleep`, `mika_log_activity`,
+  `mika_log_solids`, breastfeeding `mika_breastfeed_start` (asks "which side?"), `mika_breastfeed_start_left/right`,
+  `mika_breastfeed_stop_left/right` (pause that side, feed stays open), `mika_breastfeed_stop` (save the feed), and
+  `mika_nursing` ("breastfeeding extras": switch/pause/resume/cancel). Helper `mika_breastfeed_stop_side` is not exposed.
+  Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
@@ -135,8 +138,8 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Wake up call | `automation.wake_up_call` | off | |
 | Garage Light Activate | `automation.garage_light_activate` | on | Garage light 05:00–09:00 on weekdays |
 | Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
-| Garage Door Open/Close | `automation.new_automation_2` | on | Switch on sends "open" only, switch off sends "close" only (since 2026-10-22; a part-open door counts as open, so switch-on finishes opening it). Ignores unavailable/unknown (no opening on restarts) and has a loop guard |
-| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch ("Open Switch", gang 3) in step with the door |
+| Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes, with no check of the door state (simplified 2026-10-26). Ignores unavailable/unknown, so no opening on restarts |
+| Garage Switch Follows Door | `automation.garage_switch_follows_door` | **off** | Paused 2026-10-26: the door always reports "open, 100%", so syncing the switch to it sent wrong commands |
 | Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
 | Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
 | Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | on | See below |
@@ -162,6 +165,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Garage door always reports "open, 100%" even when shut, so the switch light can't follow it; sync automation paused until that is fixed.
 - Mika: expose the six `script.mika_*` scripts and Mika sensors to Assist, then test a voice log (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
@@ -180,6 +184,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-10-26: Garage switch simplified (on opens, off closes) and Switch Follows Door paused after the door closed itself again; Mika breastfeeding voice scripts added, bottles are breast milk.
 - 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
 - 2026-10-23: Garage Door Open/Close fixed (it sent open then close, so the door stopped partway after the move to Tuya Local).
 - 2026-10-21: Bulb power cycle automations reworked (5-minute watch, never re-enable a switch turned off); bulb root-cause options added; scripts listed.
