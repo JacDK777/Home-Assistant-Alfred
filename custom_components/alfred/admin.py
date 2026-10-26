@@ -1,6 +1,7 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
-Its tools read the error log, edit UI-managed automations, scripts and dashboards,
+Its tools read the error log, create, edit and delete UI-managed automations,
+scripts and scenes, run any Home Assistant action, edit dashboards,
 look up and rename entities and devices, download and update HACS repositories,
 manage dashboard resources, check and fix Tuya Local connections and file GitHub
 issues.
@@ -45,8 +46,11 @@ ADMIN_API_NAME = "Alfred admin (error log, automations, scripts, issues)"
 ADMIN_PROMPT = """You also have admin tools for this Home Assistant installation.
 - Before any tool that saves or reports something, tell the user exactly what you
   will change or report and wait for an explicit yes in this conversation.
-- Read an automation, script or dashboard before editing it, then save the complete
-  updated configuration.
+- Read an automation, script, scene or dashboard before editing it, then save the
+  complete updated configuration.
+- For everyday device control use the Assist tools. Use call_action for anything
+  they cannot do. Ask first before an action that is risky or hard to undo, such
+  as locks, alarms, garage doors, restarts or deleting things.
 - Never put passwords, API keys or other secrets into automations, scripts or issues.
 - GitHub issues are public. Use report_issue for bugs in Alfred itself."""
 
@@ -134,12 +138,12 @@ class GetErrorLogTool(AdminTool):
 
 
 class ListAutomationsAndScriptsTool(AdminTool):
-    """List automations and scripts with the ids the other tools need."""
+    """List automations, scripts and scenes with the ids the other tools need."""
 
     name = "list_automations_and_scripts"
     description = (
-        "List all automations and scripts with their ids, names and states. "
-        "Use the ids with get_automation, save_automation, get_script and save_script."
+        "List all automations, scripts and scenes with their ids, names and states. "
+        "Use the ids with the get_, save_ and delete_ tools for each of them."
     )
 
     async def _async_run(
@@ -162,6 +166,14 @@ class ListAutomationsAndScriptsTool(AdminTool):
                     "name": state.name,
                 }
                 for state in hass.states.async_all("script")
+            ],
+            "scenes": [
+                {
+                    "scene_id": state.attributes.get("id"),
+                    "entity_id": state.entity_id,
+                    "name": state.name,
+                }
+                for state in hass.states.async_all("scene")
             ],
         }
 
@@ -194,13 +206,25 @@ def _script_view():
     )
 
 
+def _scene_view():
+    from homeassistant.components.config.scene import (
+        PLATFORM_SCHEMA,
+        EditSceneConfigView,
+    )
+    from homeassistant.config import SCENE_CONFIG_PATH
+
+    return EditSceneConfigView(
+        "scene", "config", SCENE_CONFIG_PATH, cv.string, data_schema=PLATFORM_SCHEMA
+    )
+
+
 async def _async_read_item(hass: HomeAssistant, view: Any, key: str) -> dict[str, Any]:
-    """Read one automation or script from its UI-managed YAML file."""
+    """Read one automation, script or scene from its UI-managed YAML file."""
     current = await view.read_config(hass)
     if (value := view._get_value(hass, current, key)) is None:
         raise HomeAssistantError(
-            f"{key} was not found in {view.path}. Only automations and scripts "
-            "created in the UI can be read or edited."
+            f"{key} was not found in {view.path}. Only automations, scripts and "
+            "scenes created in the UI can be read, edited or deleted."
         )
     return value
 
@@ -208,14 +232,37 @@ async def _async_read_item(hass: HomeAssistant, view: Any, key: str) -> dict[str
 async def _async_write_item(
     hass: HomeAssistant, view: Any, key: str, config: dict[str, Any]
 ) -> None:
-    """Validate and save one automation or script the way the UI editor does."""
+    """Validate and save one automation, script or scene the way the UI editor does."""
     from homeassistant.components.config.view import _write
 
-    await view.data_validator(hass, key, config)
+    if view.data_validator:
+        await view.data_validator(hass, key, config)
+    else:
+        view.data_schema(config)
     async with view.mutation_lock:
         current = await view.read_config(hass)
         view._write_value(hass, current, key, config)
         await hass.async_add_executor_job(_write, hass.config.path(view.path), current)
+
+
+async def _async_delete_item(
+    hass: HomeAssistant, view: Any, domain: str, platform: str, key: str
+) -> None:
+    """Delete one automation, script or scene the way the UI editor does."""
+    from homeassistant.components.config.view import _write
+
+    async with view.mutation_lock:
+        current = await view.read_config(hass)
+        if view._get_value(hass, current, key) is None:
+            raise HomeAssistantError(
+                f"{key} was not found in {view.path}. Only automations, scripts and "
+                "scenes created in the UI can be deleted."
+            )
+        view._delete_value(hass, current, key)
+        await hass.async_add_executor_job(_write, hass.config.path(view.path), current)
+    ent_reg = er.async_get(hass)
+    if entity_id := ent_reg.async_get_entity_id(domain, platform, key):
+        ent_reg.async_remove(entity_id)
 
 
 class GetAutomationTool(AdminTool):
@@ -297,6 +344,145 @@ class SaveScriptTool(AdminTool):
         await _async_write_item(hass, _script_view(), args["script_id"], args["config"])
         await hass.services.async_call("script", "reload", blocking=True)
         return {"success": True, "script_id": args["script_id"]}
+
+
+class DeleteAutomationTool(AdminTool):
+    """Delete an automation."""
+
+    name = "delete_automation"
+    description = (
+        "Delete an automation by its automation_id. Only call after the user has "
+        "confirmed which automation to delete."
+    )
+    parameters = vol.Schema({vol.Required("automation_id"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        key = args["automation_id"]
+        await _async_delete_item(
+            hass, _automation_view(), "automation", "automation", key
+        )
+        return {"success": True, "automation_id": key}
+
+
+class DeleteScriptTool(AdminTool):
+    """Delete a script."""
+
+    name = "delete_script"
+    description = (
+        "Delete a script by its script_id. Only call after the user has confirmed "
+        "which script to delete."
+    )
+    parameters = vol.Schema({vol.Required("script_id"): cv.slug})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        key = args["script_id"]
+        await _async_delete_item(hass, _script_view(), "script", "script", key)
+        return {"success": True, "script_id": key}
+
+
+class GetSceneTool(AdminTool):
+    """Read one scene's configuration."""
+
+    name = "get_scene"
+    description = "Get the full configuration of a scene by its scene_id."
+    parameters = vol.Schema({vol.Required("scene_id"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        config = await _async_read_item(hass, _scene_view(), args["scene_id"])
+        return {"config": config}
+
+
+class SaveSceneTool(AdminTool):
+    """Create or replace a scene."""
+
+    name = "save_scene"
+    description = (
+        "Create a new scene, or replace an existing one by passing its scene_id. "
+        "config uses the scenes.yaml format: name, optional icon, and entities "
+        "mapping each entity_id to the state and attributes it should have, such "
+        'as {"light.kitchen": {"state": "on", "brightness": 128}}. Only '
+        "call after the user has confirmed the change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Optional("scene_id"): cv.string,
+            vol.Required("config"): dict,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        key = args.get("scene_id") or uuid.uuid4().hex
+        config = {k: v for k, v in args["config"].items() if k != "id"}
+        await _async_write_item(hass, _scene_view(), key, config)
+        await hass.services.async_call("scene", "reload", blocking=True)
+        return {"success": True, "scene_id": key}
+
+
+class DeleteSceneTool(AdminTool):
+    """Delete a scene."""
+
+    name = "delete_scene"
+    description = (
+        "Delete a scene by its scene_id. Only call after the user has confirmed "
+        "which scene to delete."
+    )
+    parameters = vol.Schema({vol.Required("scene_id"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        key = args["scene_id"]
+        await _async_delete_item(hass, _scene_view(), "scene", "homeassistant", key)
+        return {"success": True, "scene_id": key}
+
+
+class CallActionTool(AdminTool):
+    """Run any Home Assistant action (service)."""
+
+    name = "call_action"
+    description = (
+        "Run any Home Assistant action, such as light.turn_on, "
+        "media_player.play_media, input_number.set_value or scene.create, for "
+        "anything the Assist tools cannot do. target can hold entity_id, "
+        "device_id, area_id or floor_id. Set return_response for actions that "
+        "return data, such as weather.get_forecasts or calendar.get_events."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("domain"): cv.string,
+            vol.Required("action"): cv.string,
+            vol.Optional("target"): dict,
+            vol.Optional("data"): dict,
+            vol.Optional("return_response"): cv.boolean,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        domain, action = args["domain"], args["action"]
+        if not hass.services.has_service(domain, action):
+            raise HomeAssistantError(f"There is no action {domain}.{action}")
+        response = await hass.services.async_call(
+            domain,
+            action,
+            args.get("data") or {},
+            blocking=True,
+            target=args.get("target"),
+            return_response=args.get("return_response", False),
+        )
+        result: dict[str, Any] = {"success": True}
+        if response is not None:
+            result["response"] = response
+        return result
 
 
 def _dashboards(hass: HomeAssistant) -> dict[str | None, Any]:
@@ -984,6 +1170,12 @@ class AlfredAdminAPI(llm.API):
             SaveAutomationTool(),
             GetScriptTool(),
             SaveScriptTool(),
+            DeleteAutomationTool(),
+            DeleteScriptTool(),
+            GetSceneTool(),
+            SaveSceneTool(),
+            DeleteSceneTool(),
+            CallActionTool(),
             ListDashboardsTool(),
             GetDashboardTool(),
             SaveDashboardTool(),
