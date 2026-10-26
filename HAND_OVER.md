@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-26 (06:55)
+**Last updated:** 2026-10-26 (08:00)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -138,8 +138,8 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Wake up call | `automation.wake_up_call` | off | |
 | Garage Light Activate | `automation.garage_light_activate` | on | Garage light 05:00–09:00 on weekdays |
 | Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
-| Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes, with no check of the door state (simplified 2026-10-26). Ignores unavailable/unknown, so no opening on restarts |
-| Garage Switch Follows Door | `automation.garage_switch_follows_door` | **off** | Paused 2026-10-26: the door always reports "open, 100%", so syncing the switch to it sent wrong commands |
+| Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes (no door-state check). Ignores unavailable/unknown (no opening on restarts) and switch changes made by an automation, so the sync below never moves the door. 5-second lockout after each command: wait ~5 s between presses |
+| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch (gang 3) in step with the door; only acts when they disagree, and re-syncs on HA start |
 | Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
 | Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
 | Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | on | See below |
@@ -165,7 +165,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
-- Garage door always reports "open, 100%" even when shut, so the switch light can't follow it; sync automation paused until that is fixed.
+- Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Mika: expose the six `script.mika_*` scripts and Mika sensors to Assist, then test a voice log (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
@@ -184,7 +184,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
-- 2026-10-26: Garage switch simplified (on opens, off closes) and Switch Follows Door paused after the door closed itself again; Mika breastfeeding voice scripts added, bottles are breast milk.
+- 2026-10-26: Garage fixed after the door closed itself again: switch on opens, off closes, automation-made switch changes are ignored, 5-second lockout, and Switch Follows Door is back on (confirmed working); Mika breastfeeding voice scripts added, bottles are breast milk.
 - 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
 - 2026-10-23: Garage Door Open/Close fixed (it sent open then close, so the door stopped partway after the move to Tuya Local).
 - 2026-10-21: Bulb power cycle automations reworked (5-minute watch, never re-enable a switch turned off); bulb root-cause options added; scripts listed.
