@@ -72,8 +72,12 @@ Alfred can also help look after Home Assistant itself. In **Configure → Contro
 Assistant**, also select **Alfred admin**. Alfred can then:
 
 - read recent warnings and errors from the log ("Are there any errors in the log?")
-- list, read, create and edit automations and scripts that were made in the UI
-  ("Make the porch light turn on at sunset")
+- list, read, create, edit and delete automations, scripts and scenes that were made
+  in the UI ("Make the porch light turn on at sunset", "Make a movie night scene with
+  the great room lights dimmed")
+- run any Home Assistant action that the everyday Assist tools can't, such as setting
+  a helper, playing media or fetching a weather forecast. Alfred asks first before
+  anything risky, like locks, the garage door or a restart.
 - list, read and edit dashboards that are managed in the UI ("Put the kitchen lights on
   the Main Dash"). The version before each change is kept, so Alfred can undo it.
 - look up entities with the integration and device they come from ("Which entities
@@ -95,8 +99,8 @@ Assistant**, also select **Alfred admin**. Alfred can then:
 These tools only work for Home Assistant **administrators**. Requests from other users,
 or from voice satellites and automations that are not tied to a signed-in user, get no
 admin tools. Alfred is told to describe every change and wait for your yes before
-saving it, and Home Assistant validates each automation and script before it is
-written.
+saving or deleting it, and Home Assistant validates each automation, script and scene
+before it is written.
 
 ### Tuya Local devices that change IP address
 

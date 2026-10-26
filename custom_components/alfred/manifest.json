@@ -18,5 +18,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/jacdk777/home-assistant-alfred/issues",
   "requirements": ["anthropic>=0.125.0"],
-  "version": "0.7.0"
+  "version": "0.8.0"
 }

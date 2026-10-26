@@ -14,7 +14,7 @@ from pytest_homeassistant_custom_component.common import (
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 import voluptuous as vol
 
-from homeassistant.core import Context, HomeAssistant
+from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 from homeassistant.setup import async_setup_component
@@ -29,7 +29,7 @@ from custom_components.alfred.const import CONF_GITHUB_TOKEN
 
 @pytest.fixture
 def config_store() -> dict[str, Any]:
-    """Replace automations.yaml and scripts.yaml with an in-memory store."""
+    """Replace the UI-managed automation, script and scene files with a store."""
     store: dict[str, Any] = {
         "automations.yaml": [
             {
@@ -40,6 +40,7 @@ def config_store() -> dict[str, Any]:
             }
         ],
         "scripts.yaml": {},
+        "scenes.yaml": [],
     }
 
     def _read(path: str) -> Any:
@@ -86,6 +87,12 @@ async def test_admin_tools_only_for_admins(
         "save_automation",
         "get_script",
         "save_script",
+        "delete_automation",
+        "delete_script",
+        "get_scene",
+        "save_scene",
+        "delete_scene",
+        "call_action",
         "list_dashboards",
         "get_dashboard",
         "save_dashboard",
@@ -626,3 +633,100 @@ async def test_dashboard_resources(
     assert [r["resource_id"] for r in result["resources"]] == ["new"]
     with pytest.raises(HomeAssistantError, match="No dashboard resource"):
         await _call(api, "remove_dashboard_resource", resource_id="old")
+
+
+async def test_delete_automation_and_script(
+    hass: HomeAssistant,
+    setup_alfred,
+    hass_admin_user: MockUser,
+    config_store: dict[str, Any],
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Deleting removes the item from its file and the entity registry."""
+    config_store["scripts.yaml"] = {"good_night": {"sequence": []}}
+    entity_registry.async_get_or_create("automation", "automation", "morning")
+    entity_registry.async_get_or_create("script", "script", "good_night")
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(api, "delete_automation", automation_id="morning")
+    assert result == {"success": True, "automation_id": "morning"}
+    assert config_store["automations.yaml"] == []
+    assert not entity_registry.async_get_entity_id(
+        "automation", "automation", "morning"
+    )
+
+    await _call(api, "delete_script", script_id="good_night")
+    assert config_store["scripts.yaml"] == {}
+    assert not entity_registry.async_get_entity_id("script", "script", "good_night")
+
+    with pytest.raises(HomeAssistantError, match="not found"):
+        await _call(api, "delete_automation", automation_id="morning")
+
+
+async def test_edit_scene(
+    hass: HomeAssistant,
+    setup_alfred,
+    hass_admin_user: MockUser,
+    config_store: dict[str, Any],
+    entity_registry: er.EntityRegistry,
+) -> None:
+    """Scenes are validated, saved, reloaded, read back and deleted."""
+    reloads = async_mock_service(hass, "scene", "reload")
+    api = await _api(hass, hass_admin_user)
+    config = {"name": "Movie night", "entities": {"light.kitchen": {"state": "off"}}}
+
+    result = await _call(api, "save_scene", scene_id="movie", config=config)
+    assert result == {"success": True, "scene_id": "movie"}
+    assert config_store["scenes.yaml"] == [{"id": "movie", **config}]
+    assert len(reloads) == 1
+
+    result = await _call(api, "get_scene", scene_id="movie")
+    assert result["config"]["name"] == "Movie night"
+
+    with pytest.raises(vol.Invalid):
+        await _call(api, "save_scene", config={"entities": "nonsense"})
+    assert len(config_store["scenes.yaml"]) == 1
+
+    entity_registry.async_get_or_create("scene", "homeassistant", "movie")
+    await _call(api, "delete_scene", scene_id="movie")
+    assert config_store["scenes.yaml"] == []
+    assert not entity_registry.async_get_entity_id("scene", "homeassistant", "movie")
+
+
+async def test_call_action(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Any action can be run, with a target, data and an optional response."""
+    calls = async_mock_service(hass, "light", "turn_on")
+    api = await _api(hass, hass_admin_user)
+
+    result = await _call(
+        api,
+        "call_action",
+        domain="light",
+        action="turn_on",
+        target={"entity_id": "light.kitchen"},
+        data={"brightness": 100},
+    )
+    assert result == {"success": True}
+    assert calls[0].data == {"entity_id": "light.kitchen", "brightness": 100}
+
+    async_mock_service(
+        hass,
+        "weather",
+        "get_forecasts",
+        response={"weather.home": {"forecast": []}},
+        supports_response=SupportsResponse.ONLY,
+    )
+    result = await _call(
+        api,
+        "call_action",
+        domain="weather",
+        action="get_forecasts",
+        data={"type": "daily"},
+        return_response=True,
+    )
+    assert result["response"] == {"weather.home": {"forecast": []}}
+
+    with pytest.raises(HomeAssistantError, match="no action"):
+        await _call(api, "call_action", domain="light", action="explode")
