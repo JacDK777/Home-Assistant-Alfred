@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-26 (08:00)
+**Last updated:** 2026-10-27 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -50,14 +50,15 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.7.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.8.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
   #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
   #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
   update_tuya_local_device, #9 auto-reconnect of Tuya Local devices to their new IP every 5 min,
   #10 rename_entity / rename_device, #12 HACS tools (list_hacs_repositories, download_hacs_repository)
   and dashboard resource tools (list/remove_dashboard_resource). Alfred always names the exact version and
-  waits for a yes before downloading anything from HACS.
+  waits for a yes before downloading anything from HACS. #15 (0.8.0) scenes (get/save/delete_scene), delete_automation /
+  delete_script and call_action (run any HA action). #16 butler icon.
 - After updating Alfred (HACS redownload + restart), start a **new Claude thread** to see the new tools.
 - `scripts/tuya_swap.py` (merged in #7): swaps Tuya cloud entities
   on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
@@ -165,6 +166,10 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Garage wall switch "Downstairs Light Switch 3" dropped off the local network on 2026-10-27 (no reply at 192.168.68.144,
+  still online in Smart Life); waiting on its new IP from the Deco or a breaker power cycle. Reserve its IP once found.
+- Standalone Alfred voice app (Android, "Hey Alfred" wake word, Claude + HA) planned; waiting on a new GitHub repo,
+  a Picovoice access key (goes in credentials.md) and an OK to sideload.
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Mika: expose the six `script.mika_*` scripts and Mika sensors to Assist, then test a voice log (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
@@ -184,6 +189,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-10-27: Alfred 0.8.0 (scenes, delete, call_action) and butler icon; garage wall switch offline; standalone Alfred app planned.
 - 2026-10-26: Garage fixed after the door closed itself again: switch on opens, off closes, automation-made switch changes are ignored, 5-second lockout, and Switch Follows Door is back on (confirmed working); Mika breastfeeding voice scripts added, bottles are breast milk.
 - 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
 - 2026-10-23: Garage Door Open/Close fixed (it sent open then close, so the door stopped partway after the move to Tuya Local).
