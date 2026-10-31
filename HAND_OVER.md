@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-27 (06:55)
+**Last updated:** 2026-10-31 (06:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -148,6 +148,8 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Guest Bedroom bulb auto power cycle | `automation.guest_bedroom_bulb_auto_power_cycle` | on | See below |
 | Tania's Office bulb auto power cycle | `automation.tania_s_office_bulb_auto_power_cycle` | on | See below |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
+| Water Tank: store reading after measuring window | `automation.water_tank_store_reading_after_measuring_window` | on | At 05:30, 07:30, 19:30 and 22:30 saves the 30-min median level into `input_number.water_tank_level` (ignores 0% unless already ≤10%) |
+| Water Tank: low level alert with fill option | `automation.water_tank_low_level_alert_with_fill_option` | on | After each stored reading below 20%, asks on the JDK phone to fill; Yes runs Rain Bird "Municipal Tank Input" for 30 min |
 
 **Bulb auto power cycle:** when the room's wall switch turns on, watch its bulbs for up to 5 minutes and stop as
 soon as all connect. Only if a bulb is still unavailable after 5 minutes **and the switch stayed on the whole
@@ -189,6 +191,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-10-31: Two new water tank automations (stored readings in quiet windows; low-level alert with a 30-minute municipal fill option).
 - 2026-10-27: Alfred 0.8.0 (scenes, delete, call_action) and butler icon; garage wall switch offline; standalone Alfred app planned.
 - 2026-10-26: Garage fixed after the door closed itself again: switch on opens, off closes, automation-made switch changes are ignored, 5-second lockout, and Switch Follows Door is back on (confirmed working); Mika breastfeeding voice scripts added, bottles are breast milk.
 - 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
