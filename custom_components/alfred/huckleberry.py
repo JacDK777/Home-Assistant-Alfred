@@ -119,14 +119,16 @@ def _huckleberry_entries(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
     }
 
 
-def _child_devices(hass: HomeAssistant) -> list[tuple[dr.DeviceEntry, str]]:
-    """Return every Huckleberry child device with its child id."""
+def _child_devices(hass: HomeAssistant) -> list[tuple[dr.DeviceEntry, str, str]]:
+    """Return every Huckleberry child device with its child id and config entry."""
+    registry = dr.async_get(hass)
     devices = []
-    for device in dr.async_get(hass).devices.values():
-        for identifier_domain, identifier in device.identifiers:
-            if identifier_domain == HUCKLEBERRY_DOMAIN:
-                devices.append((device, identifier))
-                break
+    for entry in hass.config_entries.async_entries(HUCKLEBERRY_DOMAIN):
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+            for identifier_domain, identifier in device.identifiers:
+                if identifier_domain == HUCKLEBERRY_DOMAIN:
+                    devices.append((device, identifier, entry.entry_id))
+                    break
     return devices
 
 
@@ -153,7 +155,7 @@ def _resolve_child(hass: HomeAssistant, call: ServiceCall) -> tuple[Any, Any, st
         matches = children
         if len(matches) != 1:
             names = ", ".join(
-                device.name_by_user or device.name or "?" for device, _ in children
+                device.name_by_user or device.name or "?" for device, _, _ in children
             )
             raise ServiceValidationError(
                 f"Say which child this is for by passing device_id. Children: {names}"
@@ -161,16 +163,13 @@ def _resolve_child(hass: HomeAssistant, call: ServiceCall) -> tuple[Any, Any, st
                 else "Huckleberry has no children set up"
             )
 
-    device, child_uid = matches[0]
-    entry_data = next(
-        (entries[eid] for eid in device.config_entries if eid in entries),
-        next(iter(entries.values())),
-    )
+    _, child_uid, entry_id = matches[0]
+    entry_data = entries.get(entry_id) or next(iter(entries.values()))
     return entry_data["api"], entry_data.get("coordinator"), child_uid
 
 
 def _child_name(hass: HomeAssistant, child_uid: str) -> str:
-    for device, uid in _child_devices(hass):
+    for device, uid, _ in _child_devices(hass):
         if uid == child_uid:
             return device.name_by_user or device.name or "the baby"
     return "the baby"
