@@ -81,3 +81,44 @@ huckleberry_log_temperature:
     notes:
       selector:
         text:
+
+huckleberry_activity_timer:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: huckleberry
+    activity:
+      required: true
+      selector:
+        select:
+          options:
+            - bath
+            - tummyTime
+            - storyTime
+            - screenTime
+            - skinToSkin
+            - outdoorPlay
+            - indoorPlay
+            - brushTeeth
+    action:
+      required: true
+      selector:
+        select:
+          options:
+            - start
+            - pause
+            - resume
+            - stop
+            - cancel
+    minutes_ago:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10080
+          unit_of_measurement: min
+          mode: box
+    notes:
+      selector:
+        text:

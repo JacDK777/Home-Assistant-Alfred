@@ -172,3 +172,99 @@ async def test_services_removed_on_unload(
     assert hass.services.has_service(DOMAIN, "huckleberry_log_medication")
     await hass.config_entries.async_unload(setup_alfred.entry_id)
     assert not hass.services.has_service(DOMAIN, "huckleberry_log_medication")
+
+
+def _timers(**timers: Any) -> MagicMock:
+    """Build an activity status like FirebaseActivityDocumentData."""
+    timer_data = MagicMock(spec=list(timers))
+    for mode, timer in timers.items():
+        setattr(timer_data, mode, timer)
+    return MagicMock(timer=timer_data)
+
+
+async def test_activity_timer_start_and_stop(
+    hass: HomeAssistant, setup_alfred: MockConfigEntry, huckleberry
+) -> None:
+    """A bath timer starts, and stopping it saves it with its length."""
+    api, coordinator, _ = huckleberry
+    api.start_activity = AsyncMock()
+    api.complete_activity = AsyncMock()
+
+    coordinator.get_activity_status.return_value = _timers()
+    result = await _call(
+        hass, "huckleberry_activity_timer", activity="bath", action="start"
+    )
+    api.start_activity.assert_awaited_once_with("child-uid", "bath", start_time=None)
+    assert result["summary"] == "Started the bath timer for Mika"
+
+    started = dt_util.utcnow().timestamp() * 1000 - 12 * 60 * 1000
+    coordinator.get_activity_status.return_value = _timers(
+        bath=MagicMock(active=True, paused=False, startTime=started)
+    )
+    result = await _call(
+        hass,
+        "huckleberry_activity_timer",
+        activity="bath",
+        action="stop",
+        notes="loved it",
+    )
+    api.complete_activity.assert_awaited_once_with(
+        "child-uid", "bath", notes="loved it"
+    )
+    assert result["summary"] == "Saved 12 minutes of bath for Mika"
+
+
+async def test_activity_timer_refusals(
+    hass: HomeAssistant, setup_alfred: MockConfigEntry, huckleberry
+) -> None:
+    """Stopping a timer that isn't running, or starting a second one, is refused."""
+    api, coordinator, _ = huckleberry
+    api.start_activity = AsyncMock()
+    api.complete_activity = AsyncMock()
+    coordinator.get_activity_status.return_value = _timers(
+        bath=MagicMock(active=True, paused=True, duration=300)
+    )
+
+    with pytest.raises(ServiceValidationError, match="No tummy time timer"):
+        await _call(
+            hass, "huckleberry_activity_timer", activity="tummyTime", action="stop"
+        )
+    with pytest.raises(ServiceValidationError, match="bath timer is already running"):
+        await _call(
+            hass, "huckleberry_activity_timer", activity="tummyTime", action="start"
+        )
+    api.start_activity.assert_not_awaited()
+    api.complete_activity.assert_not_awaited()
+
+
+async def test_activity_timer_start_earlier_and_cancel(
+    hass: HomeAssistant, setup_alfred: MockConfigEntry, huckleberry
+) -> None:
+    """A timer can start in the past, and cancelling discards it."""
+    api, coordinator, _ = huckleberry
+    api.start_activity = AsyncMock()
+    api.cancel_activity = AsyncMock()
+    coordinator.get_activity_status.return_value = _timers()
+
+    result = await _call(
+        hass,
+        "huckleberry_activity_timer",
+        activity="tummyTime",
+        action="start",
+        minutes_ago=5,
+    )
+    start_time = api.start_activity.await_args.kwargs["start_time"]
+    assert abs(start_time - (dt_util.now() - timedelta(minutes=5))) < timedelta(
+        seconds=5
+    )
+    assert (
+        result["summary"] == "Started the tummy time timer for Mika from 5 minutes ago"
+    )
+
+    coordinator.get_activity_status.return_value = _timers(
+        tummyTime=MagicMock(active=True, paused=False, startTime=0)
+    )
+    await _call(
+        hass, "huckleberry_activity_timer", activity="tummyTime", action="cancel"
+    )
+    api.cancel_activity.assert_awaited_once_with("child-uid", "tummyTime")

@@ -131,6 +131,32 @@
           "description": "Optional notes."
         }
       }
+    },
+    "huckleberry_activity_timer": {
+      "name": "Huckleberry activity timer",
+      "description": "Start, pause, resume, stop (save) or cancel a live activity timer in Huckleberry, such as bath or tummy time.",
+      "fields": {
+        "device_id": {
+          "name": "Child",
+          "description": "The child's Huckleberry device. Can be left out when there is only one child."
+        },
+        "activity": {
+          "name": "Activity",
+          "description": "Which activity."
+        },
+        "action": {
+          "name": "Timer action",
+          "description": "start, pause, resume, stop (saves it) or cancel (discards it)."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "When starting: how long ago the activity began. Leave at 0 for now."
+        },
+        "notes": {
+          "name": "Notes",
+          "description": "When stopping: optional notes to save with it."
+        }
+      }
     }
   }
 }
