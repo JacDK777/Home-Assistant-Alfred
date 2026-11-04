@@ -60,5 +60,77 @@
         "high": "High (most thorough)"
       }
     }
+  },
+  "services": {
+    "huckleberry_log_medication": {
+      "name": "Log Huckleberry medication",
+      "description": "Log a medicine dose in Huckleberry. The medicine must already exist in Huckleberry unless 'Add new medicine' is on.",
+      "fields": {
+        "device_id": {
+          "name": "Child",
+          "description": "The child's Huckleberry device. Can be left out when there is only one child."
+        },
+        "medication": {
+          "name": "Medication",
+          "description": "Name of the medicine, matched against the medicines saved in Huckleberry."
+        },
+        "amount": {
+          "name": "Amount",
+          "description": "Dose amount (optional)."
+        },
+        "units": {
+          "name": "Units",
+          "description": "Units of the amount. Defaults to ml when an amount is given."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave at 0 for now."
+        },
+        "notes": {
+          "name": "Notes",
+          "description": "Optional notes."
+        },
+        "add_new": {
+          "name": "Add new medicine",
+          "description": "Add the medicine to Huckleberry if it is not there yet."
+        }
+      }
+    },
+    "huckleberry_list_medications": {
+      "name": "List Huckleberry medications",
+      "description": "Return the medicines saved in Huckleberry for a child.",
+      "fields": {
+        "device_id": {
+          "name": "Child",
+          "description": "The child's Huckleberry device. Can be left out when there is only one child."
+        }
+      }
+    },
+    "huckleberry_log_temperature": {
+      "name": "Log Huckleberry temperature",
+      "description": "Log a body temperature reading in Huckleberry.",
+      "fields": {
+        "device_id": {
+          "name": "Child",
+          "description": "The child's Huckleberry device. Can be left out when there is only one child."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "The reading."
+        },
+        "units": {
+          "name": "Units",
+          "description": "C for Celsius or F for Fahrenheit."
+        },
+        "minutes_ago": {
+          "name": "Minutes ago",
+          "description": "How long ago it happened. Leave at 0 for now."
+        },
+        "notes": {
+          "name": "Notes",
+          "description": "Optional notes."
+        }
+      }
+    }
   }
 }
