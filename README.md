@@ -114,17 +114,19 @@ it now announces. Each change is written to the Home Assistant log. This runs wh
 not the admin tools are selected. Reserving each device's address in your router stops
 the addresses changing in the first place.
 
-## Huckleberry medication and temperature
+## Huckleberry medication, temperature and activity timers
 
 The [Huckleberry](https://github.com/Woyken/huckleberry-homeassistant) integration logs sleep,
-feeds, nappies, growth, pumping, activities and solids, but has no action for medicine or
-temperature. When it is set up, Alfred adds three actions that use its signed-in connection:
+feeds, nappies, growth, pumping, finished activities and solids, but has no action for medicine,
+temperature or live activity timers. When it is set up, Alfred adds these actions, which use its
+signed-in connection:
 
 | Action | What it does |
 | --- | --- |
 | `alfred.huckleberry_log_medication` | Logs a dose of a medicine saved in Huckleberry (`medication`, optional `amount` and `units`: ml, oz, tsp or drops; `minutes_ago`; `notes`). Names are matched loosely, so "vitamin d" finds "Vitamin D drops". An unknown medicine is refused with the list of known ones, unless `add_new: true`. |
 | `alfred.huckleberry_list_medications` | Returns the medicines saved in Huckleberry with their usual dose. |
 | `alfred.huckleberry_log_temperature` | Logs a body temperature (`temperature`, `units` C or F, `minutes_ago`, `notes`). |
+| `alfred.huckleberry_activity_timer` | Starts, pauses, resumes, stops (saves) or cancels a live timer for an activity such as `bath` or `tummyTime`, like the timers in the Huckleberry app. Only one activity timer runs at a time; starting another is refused until the first is stopped. |
 
 `device_id` is the child's Huckleberry device and can be left out when there is only one child.
 To use them by voice, wrap them in a script, expose the script to Assist and describe its
