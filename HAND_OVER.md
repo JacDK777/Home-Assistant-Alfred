@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-31 (06:55)
+**Last updated:** 2026-11-04 (05:00)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -173,7 +173,8 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 - Standalone Alfred voice app (Android, "Hey Alfred" wake word, Claude + HA) planned; waiting on a new GitHub repo,
   a Picovoice access key (goes in credentials.md) and an OK to sideload.
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
-- Mika: expose the six `script.mika_*` scripts and Mika sensors to Assist, then test a voice log (user step).
+- Mika: the 12 `script.mika_*` voice scripts are now exposed to Assist (seen 2026-11-04; `mika_breastfeed_stop_side` stays hidden).
+  Still to do: check the Mika sensors are exposed too, then test a voice log (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
   or Zigbee/dumb bulbs). Waiting on the user in the "Fix Tuya Local bulbs" thread.
@@ -191,6 +192,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-04: Mika voice scripts confirmed exposed to Assist; open item narrowed to sensors and a test log.
 - 2026-10-31: Two new water tank automations (stored readings in quiet windows; low-level alert with a 30-minute municipal fill option).
 - 2026-10-27: Alfred 0.8.0 (scenes, delete, call_action) and butler icon; garage wall switch offline; standalone Alfred app planned.
 - 2026-10-26: Garage fixed after the door closed itself again: switch on opens, off closes, automation-made switch changes are ignored, 5-second lockout, and Switch Follows Door is back on (confirmed working); Mika breastfeeding voice scripts added, bottles are breast milk.
