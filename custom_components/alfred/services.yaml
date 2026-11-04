@@ -1,0 +1,83 @@
+huckleberry_log_medication:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: huckleberry
+    medication:
+      required: true
+      example: Panado
+      selector:
+        text:
+    amount:
+      example: 2.5
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 0.1
+          mode: box
+    units:
+      selector:
+        select:
+          options:
+            - ml
+            - oz
+            - tsp
+            - drops
+    minutes_ago:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10080
+          unit_of_measurement: min
+          mode: box
+    notes:
+      selector:
+        text:
+    add_new:
+      default: false
+      selector:
+        boolean:
+
+huckleberry_list_medications:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: huckleberry
+
+huckleberry_log_temperature:
+  fields:
+    device_id:
+      selector:
+        device:
+          integration: huckleberry
+    temperature:
+      required: true
+      example: 37.2
+      selector:
+        number:
+          min: 30
+          max: 113
+          step: 0.1
+          mode: box
+    units:
+      default: C
+      selector:
+        select:
+          options:
+            - C
+            - F
+    minutes_ago:
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10080
+          unit_of_measurement: min
+          mode: box
+    notes:
+      selector:
+        text:
