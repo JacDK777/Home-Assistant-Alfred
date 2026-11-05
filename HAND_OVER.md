@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-04 (05:00)
+**Last updated:** 2026-11-05 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -50,7 +50,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.8.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.10.1 (installed 2026-11-04). Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
   #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
   #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
@@ -58,7 +58,9 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   #10 rename_entity / rename_device, #12 HACS tools (list_hacs_repositories, download_hacs_repository)
   and dashboard resource tools (list/remove_dashboard_resource). Alfred always names the exact version and
   waits for a yes before downloading anything from HACS. #15 (0.8.0) scenes (get/save/delete_scene), delete_automation /
-  delete_script and call_action (run any HA action). #16 butler icon.
+  delete_script and call_action (run any HA action). #16 butler icon. #17 (0.9.0) Huckleberry medication and
+  temperature actions, #18 (0.10.0) Huckleberry activity timers (bath, tummy time), #19 (0.10.1) device-registry deprecation fix.
+  Alfred can restart HA itself (call_action).
 - After updating Alfred (HACS redownload + restart), start a **new Claude thread** to see the new tools.
 - `scripts/tuya_swap.py` (merged in #7): swaps Tuya cloud entities
   on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
@@ -117,7 +119,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - **Remotes** dashboard: TV remotes use Universal Remote Card 4.12.1 (HACS); old android-tv-card / tv-card
     resources removed. Keyboard buttons use live typing; scripts `script.living_room_tv_type_text` and
     `script.bedroom_tv_type_text` send text. Live typing needs **Enable IME** on (Android TV Remote → Configure).
-- **Huckleberry** (baby tracker, Mika): HACS custom repo `Woyken/huckleberry-homeassistant` v0.5.5, added 2026-10-25,
+- **Huckleberry** (baby tracker, Mika): HACS custom repo `Woyken/huckleberry-homeassistant` (now v0.5.9), added 2026-10-25,
   signed in with the Huckleberry account (unofficial Firebase API). Device "Mika" (`device_id 3445e23e0b7211c4ef1c664f8163cdb5`):
   `sensor.mika_sleep/nursing/bottle/diaper/growth/medication`, `switch.mika_sleep_timer`, `switch.mika_nursing_left/right`,
   `calendar.mika_events`. Actions `huckleberry.log_bottle`, `log_diaper_*`, `log_activity`, `start/complete_sleep` etc.
@@ -126,7 +128,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   `mika_log_solids`, breastfeeding `mika_breastfeed_start` (asks "which side?"), `mika_breastfeed_start_left/right`,
   `mika_breastfeed_stop_left/right` (pause that side, feed stays open), `mika_breastfeed_stop` (save the feed), and
   `mika_nursing` ("breastfeeding extras": switch/pause/resume/cancel). Helper `mika_breastfeed_stop_side` is not exposed.
-  Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
+  Added 2026-11-04: `mika_log_medication` and `mika_log_temperature` (need Alfred 0.9.0, Alfred PR #17, which adds `alfred.huckleberry_log_medication` / `huckleberry_list_medications` / `huckleberry_log_temperature` because the Huckleberry integration has no medicine or temperature action; unknown medicines are refused unless confirmed as new), plus `mika_log_growth` (kg/cm) and `mika_log_pump` (ml + minutes). Live timers `mika_bath` and `mika_tummy_time` (start/stop/pause/resume/cancel) need Alfred 0.10.0 (PR #18, `alfred.huckleberry_activity_timer`); `mika_log_activity` still logs a finished one. Huckleberry is now v0.5.9. Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
@@ -174,7 +176,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
   a Picovoice access key (goes in credentials.md) and an OK to sideload.
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Mika: the 12 `script.mika_*` voice scripts are now exposed to Assist (seen 2026-11-04; `mika_breastfeed_stop_side` stays hidden).
-  Still to do: check the Mika sensors are exposed too, then test a voice log (user step).
+  Alfred 0.10.1 (PRs #17–#19) is installed and HA restarted (2026-11-04). Still to do: expose the 6 new scripts (medication, temperature, growth, pumping, bath timer, tummy time timer) and `sensor.mika_medication`, then test (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
   or Zigbee/dumb bulbs). Waiting on the user in the "Fix Tuya Local bulbs" thread.
@@ -192,6 +194,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-04: Voice logging for medication, temperature, growth and pumping (4 new Mika scripts; Alfred PR #17 for medication/temperature), plus bath and tummy time timers (Alfred PR #18); Alfred 0.10.1 installed (PR #19 fixed device-registry deprecation warnings). Alfred can now restart HA itself via call_action.
 - 2026-11-04: Mika voice scripts confirmed exposed to Assist; open item narrowed to sensors and a test log.
 - 2026-10-31: Two new water tank automations (stored readings in quiet windows; low-level alert with a 30-minute municipal fill option).
 - 2026-10-27: Alfred 0.8.0 (scenes, delete, call_action) and butler icon; garage wall switch offline; standalone Alfred app planned.
