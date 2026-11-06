@@ -21,12 +21,9 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 from homeassistant.setup import async_setup_component
 
-from custom_components.alfred.admin import (
-    ADMIN_API_ID,
-    TUYA_FOLLOW_INTERVAL,
-    async_follow_tuya_local_ips,
-)
+from custom_components.alfred.admin import ADMIN_API_ID, async_follow_tuya_local_ips
 from custom_components.alfred.const import CONF_GITHUB_TOKEN
+from custom_components.alfred.watchdog import WATCHDOG_INTERVAL
 
 
 @pytest.fixture
@@ -107,6 +104,8 @@ async def test_admin_tools_only_for_admins(
         "remove_dashboard_resource",
         "check_tuya_local_devices",
         "update_tuya_local_device",
+        "get_watchdog_status",
+        "set_watchdog_ignore",
     }
 
     hass_admin_user.groups = []
@@ -436,7 +435,7 @@ async def test_follow_tuya_local_ips(
     with patch(
         "custom_components.alfred.admin._scan_lan", return_value=scan
     ) as scan_lan:
-        freezer.tick(TUYA_FOLLOW_INTERVAL)
+        freezer.tick(WATCHDOG_INTERVAL)
         async_fire_time_changed(hass)
         await hass.async_block_till_done()
     scan_lan.assert_called_once()

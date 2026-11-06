@@ -10,9 +10,7 @@ They are only offered to Home Assistant administrators.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
-from datetime import datetime, timedelta
 from typing import Any
 import uuid
 
@@ -30,7 +28,6 @@ from homeassistant.helpers import (
     llm,
     storage,
 )
-from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util.json import JsonObjectType
 
 from .const import (
@@ -923,7 +920,6 @@ class RemoveDashboardResourceTool(AdminTool):
 TUYA_LOCAL = "tuya_local"
 TUYA_CLOUD = "tuya"
 TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
-TUYA_FOLLOW_INTERVAL = timedelta(minutes=5)
 
 
 def _scan_lan() -> dict[str, dict[str, Any]]:
@@ -1023,13 +1019,25 @@ def _new_local_key(entry: Any, keys: dict[str, str] | None) -> str | None:
     return key if key and key != config.get("local_key") else None
 
 
-async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
+async def async_scan_tuya_local(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
+    """Scan the LAN for Tuya devices; an empty result when the scan fails."""
+    try:
+        return await hass.async_add_executor_job(_scan_lan)
+    except HomeAssistantError as err:
+        LOGGER.debug("The Tuya LAN scan failed: %s", err)
+        return {}
+
+
+async def async_follow_tuya_local_ips(
+    hass: HomeAssistant, found: dict[str, dict[str, Any]] | None = None
+) -> list[str]:
     """Point disconnected Tuya Local devices at the IP address they now announce.
 
     A disconnected device that announces itself at its saved address is usually
     refusing Home Assistant's local key (the device was re-paired or reset), so
     its key is refreshed from the Tuya cloud integration when the cloud has a
-    different one. Returns the names of the devices that were updated.
+    different one. Pass the result of a LAN scan as found to reuse it.
+    Returns the names of the devices that were updated.
     """
     entries = [
         entry
@@ -1038,11 +1046,12 @@ async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
     ]
     if not entries:
         return []
-    try:
-        found = await hass.async_add_executor_job(_scan_lan)
-    except HomeAssistantError as err:
-        LOGGER.debug("Skipping the Tuya Local IP check: %s", err)
-        return []
+    if found is None:
+        try:
+            found = await hass.async_add_executor_job(_scan_lan)
+        except HomeAssistantError as err:
+            LOGGER.debug("Skipping the Tuya Local IP check: %s", err)
+            return []
     moved = []
     refused = []
     for entry in entries:
@@ -1070,21 +1079,6 @@ async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
                 _update_tuya_local_entry(hass, entry, {"local_key": key})
                 moved.append(entry.title)
     return moved
-
-
-def async_start_tuya_local_ip_follow(hass: HomeAssistant) -> Callable[[], None]:
-    """Check for moved Tuya Local devices every few minutes; return a stop callback."""
-    lock = asyncio.Lock()
-
-    async def _async_check(now: datetime) -> None:
-        if lock.locked():
-            return
-        async with lock:
-            await async_follow_tuya_local_ips(hass)
-
-    return async_track_time_interval(
-        hass, _async_check, TUYA_FOLLOW_INTERVAL, name="Alfred Tuya Local IP follow"
-    )
 
 
 class CheckTuyaLocalDevicesTool(AdminTool):
@@ -1206,6 +1200,70 @@ class UpdateTuyaLocalDeviceTool(AdminTool):
         return {"success": True, "name": entry.title, **changes, **result}
 
 
+def _watchdog(hass: HomeAssistant) -> Any:
+    from .watchdog import async_get_watchdog
+
+    watchdog = async_get_watchdog(hass)
+    if watchdog is None:
+        raise HomeAssistantError("Alfred's watchdog is not running")
+    return watchdog
+
+
+class GetWatchdogStatusTool(AdminTool):
+    """Show what Alfred's watchdog is repairing and has learned."""
+
+    name = "get_watchdog_status"
+    description = (
+        "Alfred's watchdog checks every 5 minutes for entities that have been "
+        "unavailable for 10 minutes, and reloads the integration entry that "
+        "provides them, pausing longer after each try (Tuya Local devices also "
+        "get their IP address and local key followed, and are left alone while "
+        "they have no power). This returns the entries it is working on "
+        "(entities, attempts, next attempt, why it skipped), its recent actions "
+        "and outcomes, how often reloading has fixed each integration, and what "
+        "it ignores. Use it when asked why something is unavailable or what "
+        "Alfred has repaired."
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        return _watchdog(hass).status()
+
+
+class SetWatchdogIgnoreTool(AdminTool):
+    """Make the watchdog ignore an entity or integration entry, or stop ignoring it."""
+
+    name = "set_watchdog_ignore"
+    description = (
+        "Make Alfred's watchdog ignore an entity (entity_id) or a whole "
+        "integration entry (entry_id from get_watchdog_status) that is expected "
+        "to be unavailable, or set ignore to false to watch it again. Only call "
+        "after the user has confirmed."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("target"): cv.string,
+            vol.Optional("ignore", default=True): cv.boolean,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        target = args["target"]
+        if (
+            er.async_get(hass).async_get(target) is None
+            and hass.config_entries.async_get_entry(target) is None
+        ):
+            raise HomeAssistantError(
+                "No entity or integration entry with that id. Use find_entities "
+                "or get_watchdog_status."
+            )
+        _watchdog(hass).set_ignored(target, args["ignore"])
+        return {"success": True, "target": target, "ignored": args["ignore"]}
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -1302,6 +1360,8 @@ class AlfredAdminAPI(llm.API):
             RemoveDashboardResourceTool(),
             CheckTuyaLocalDevicesTool(),
             UpdateTuyaLocalDeviceTool(),
+            GetWatchdogStatusTool(),
+            SetWatchdogIgnoreTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO
