@@ -587,11 +587,18 @@ async def test_follow_tuya_local_keys(
         assert await async_follow_tuya_local_ips(hass) == []
 
     manager = tuya_cloud({"bulb1": "new", "bulb2": "new2"})
-    with patch("custom_components.alfred.admin._scan_lan", return_value=scan):
+    refused.mock_state(hass, ConfigEntryState.SETUP_RETRY)
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        patch.object(hass.config_entries, "async_schedule_reload") as reload,
+    ):
         assert await async_follow_tuya_local_ips(hass) == ["Main Bedroom DL 1"]
     assert refused.data["local_key"] == "new"
+    reload.assert_called_once_with(refused.entry_id)
     # A device that announces nothing is switched off, so its key is left alone.
     assert silent.data["local_key"] == "old2"
+
+    refused.mock_state(hass, ConfigEntryState.NOT_LOADED)
 
     # A cloud failure changes nothing.
     hass.config_entries.async_update_entry(

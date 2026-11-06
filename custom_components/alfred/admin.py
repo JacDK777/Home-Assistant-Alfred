@@ -18,6 +18,7 @@ import uuid
 
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -963,6 +964,10 @@ def _update_tuya_local_entry(
             **{k: v for k, v in changes.items() if k in entry.options},
         },
     )
+    if entry.state is ConfigEntryState.SETUP_RETRY:
+        # Its update listener only exists once set up, so a device that is
+        # waiting to retry would keep failing until its next back-off attempt.
+        hass.config_entries.async_schedule_reload(entry.entry_id)
 
 
 def _fetch_cloud_local_keys(manager: Any) -> dict[str, str]:
