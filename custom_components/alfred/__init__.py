@@ -12,9 +12,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
-from .admin import async_register_admin_api, async_start_tuya_local_ip_follow
+from .admin import async_register_admin_api
 from .const import DOMAIN, LOGGER
 from .huckleberry import async_register_huckleberry_services
+from .watchdog import async_start_watchdog
 
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -47,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlfredConfigEntry) -> bo
 
     entry.runtime_data = client
     entry.async_on_unload(async_register_admin_api(hass, dict(entry.options)))
-    entry.async_on_unload(async_start_tuya_local_ip_follow(hass))
+    entry.async_on_unload(await async_start_watchdog(hass))
     entry.async_on_unload(async_register_huckleberry_services(hass))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
