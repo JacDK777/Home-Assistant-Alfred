@@ -1,6 +1,7 @@
 """Tests for the Alfred admin LLM API."""
 
 import logging
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from pytest_homeassistant_custom_component.common import (
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
@@ -359,6 +361,7 @@ async def test_tuya_local_devices(
         "connected": False,
         "announced_ip": "192.168.68.44",
         "announced_version": "3.4",
+        "local_key_matches_cloud": None,
     }
     assert result["devices"][1]["connected"] is True
     assert result["devices"][1]["announced_ip"] is None
@@ -378,6 +381,13 @@ async def test_tuya_local_devices(
     assert switch.data["host"] == "h2"
     assert "host" not in switch.options
 
+    with pytest.raises(HomeAssistantError, match="not set up"):
+        await _call(
+            api,
+            "update_tuya_local_device",
+            entry_id=bulb.entry_id,
+            refresh_local_key=True,
+        )
     with pytest.raises(HomeAssistantError, match="Give a host"):
         await _call(api, "update_tuya_local_device", entry_id=bulb.entry_id)
     with pytest.raises(HomeAssistantError, match="No Tuya Local device"):
@@ -447,6 +457,148 @@ async def test_follow_tuya_local_ips(
         "custom_components.alfred.admin._scan_lan",
         side_effect=HomeAssistantError("busy"),
     ):
+        assert await async_follow_tuya_local_ips(hass) == []
+
+
+@pytest.fixture
+def tuya_cloud(hass: HomeAssistant):
+    """Return a helper that fakes a loaded Tuya cloud integration."""
+    entries: list[MockConfigEntry] = []
+
+    def _add(keys: dict[str, str]) -> MagicMock:
+        manager = _add_tuya_cloud(hass, keys, entries)
+        return manager
+
+    yield _add
+    # Don't let teardown try to unload the real Tuya integration.
+    for entry in entries:
+        entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
+
+
+def _add_tuya_cloud(
+    hass: HomeAssistant, keys: dict[str, str], entries: list[MockConfigEntry]
+) -> MagicMock:
+    """Set up a loaded Tuya cloud integration that knows these local keys."""
+    manager = MagicMock(user_homes=[SimpleNamespace(id="home1")])
+    manager.customer_api.get.return_value = {
+        "success": True,
+        "result": [{"id": dev_id, "local_key": key} for dev_id, key in keys.items()],
+    }
+    cloud = MockConfigEntry(domain="tuya", state=ConfigEntryState.LOADED)
+    cloud.add_to_hass(hass)
+    cloud.runtime_data = SimpleNamespace(manager=manager)
+    entries.append(cloud)
+    return manager
+
+
+async def test_tuya_local_key_refresh(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, tuya_cloud
+) -> None:
+    """A stale local key is spotted and replaced with the Tuya cloud's key."""
+    api = await _api(hass, hass_admin_user)
+    bulb = MockConfigEntry(
+        domain="tuya_local",
+        title="Main Bedroom DL 1",
+        data={"device_id": "bulb1", "host": "192.168.68.142", "local_key": "old"},
+        options={"host": "192.168.68.142", "local_key": "old"},
+    )
+    child = MockConfigEntry(
+        domain="tuya_local",
+        title="Hub child",
+        data={"device_id": "hub1", "device_cid": "c1", "local_key": "hub"},
+    )
+    unknown = MockConfigEntry(
+        domain="tuya_local",
+        title="Not in cloud",
+        data={"device_id": "other", "local_key": "k"},
+    )
+    for entry in (bulb, child, unknown):
+        entry.add_to_hass(hass)
+    hass.data["tuya_local"] = {}
+    manager = tuya_cloud({"bulb1": "new", "hub1": "newhub"})
+
+    with patch("custom_components.alfred.admin._scan_lan", return_value={}):
+        result = await _call(api, "check_tuya_local_devices")
+    matches = {d["name"]: d["local_key_matches_cloud"] for d in result["devices"]}
+    assert matches == {
+        "Main Bedroom DL 1": False,
+        "Hub child": None,
+        "Not in cloud": None,
+    }
+    manager.customer_api.get.assert_called_with(
+        "/v1.0/m/life/ha/home/devices", {"homeId": "home1"}
+    )
+
+    result = await _call(
+        api, "update_tuya_local_device", entry_id=bulb.entry_id, refresh_local_key=True
+    )
+    assert result == {
+        "success": True,
+        "name": "Main Bedroom DL 1",
+        "local_key_updated": True,
+    }
+    assert bulb.data["local_key"] == bulb.options["local_key"] == "new"
+
+    result = await _call(
+        api, "update_tuya_local_device", entry_id=bulb.entry_id, refresh_local_key=True
+    )
+    assert result["local_key_updated"] is False
+
+    with pytest.raises(HomeAssistantError, match="sub-device"):
+        await _call(
+            api,
+            "update_tuya_local_device",
+            entry_id=child.entry_id,
+            refresh_local_key=True,
+        )
+    with pytest.raises(HomeAssistantError, match="no local key"):
+        await _call(
+            api,
+            "update_tuya_local_device",
+            entry_id=unknown.entry_id,
+            refresh_local_key=True,
+        )
+
+
+async def test_follow_tuya_local_keys(
+    hass: HomeAssistant, setup_alfred, tuya_cloud
+) -> None:
+    """A device that announces at its saved address but won't talk gets a new key."""
+    refused = MockConfigEntry(
+        domain="tuya_local",
+        title="Main Bedroom DL 1",
+        data={"device_id": "bulb1", "host": "192.168.68.142", "local_key": "old"},
+    )
+    silent = MockConfigEntry(
+        domain="tuya_local",
+        title="Kitchen DL 2",
+        data={"device_id": "bulb2", "host": "192.168.68.21", "local_key": "old2"},
+    )
+    for entry in (refused, silent):
+        entry.add_to_hass(hass)
+    hass.data["tuya_local"] = {
+        "bulb1": {"device": MagicMock(has_returned_state=False)},
+        "bulb2": {"device": MagicMock(has_returned_state=False)},
+    }
+    scan = {"bulb1": {"gwId": "bulb1", "ip": "192.168.68.142"}}
+
+    # Without the Tuya cloud integration nothing changes.
+    with patch("custom_components.alfred.admin._scan_lan", return_value=scan):
+        assert await async_follow_tuya_local_ips(hass) == []
+
+    manager = tuya_cloud({"bulb1": "new", "bulb2": "new2"})
+    with patch("custom_components.alfred.admin._scan_lan", return_value=scan):
+        assert await async_follow_tuya_local_ips(hass) == ["Main Bedroom DL 1"]
+    assert refused.data["local_key"] == "new"
+    # A device that announces nothing is switched off, so its key is left alone.
+    assert silent.data["local_key"] == "old2"
+
+    # A cloud failure changes nothing.
+    hass.config_entries.async_update_entry(
+        refused, data={**refused.data, "local_key": "old"}
+    )
+    manager.customer_api.get.side_effect = RuntimeError("cloud down")
+    with patch("custom_components.alfred.admin._scan_lan", return_value=scan):
         assert await async_follow_tuya_local_ips(hass) == []
 
 

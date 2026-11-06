@@ -920,6 +920,7 @@ class RemoveDashboardResourceTool(AdminTool):
 
 
 TUYA_LOCAL = "tuya_local"
+TUYA_CLOUD = "tuya"
 TUYA_PROTOCOLS = ["auto", "3.1", "3.2", "3.3", "3.4", "3.5", "3.22"]
 TUYA_FOLLOW_INTERVAL = timedelta(minutes=5)
 
@@ -964,10 +965,66 @@ def _update_tuya_local_entry(
     )
 
 
+def _fetch_cloud_local_keys(manager: Any) -> dict[str, str]:
+    """Ask the Tuya cloud for the current local key of every device (blocking).
+
+    Uses the signed-in session of Home Assistant's own Tuya integration and
+    reads the device list directly, so its device cache is left alone.
+    """
+    keys: dict[str, str] = {}
+    for home in getattr(manager, "user_homes", None) or []:
+        response = manager.customer_api.get(
+            "/v1.0/m/life/ha/home/devices", {"homeId": home.id}
+        )
+        if not response or not response.get("success"):
+            continue
+        for item in response.get("result") or []:
+            if item.get("id") and item.get("local_key"):
+                keys[item["id"]] = item["local_key"]
+    return keys
+
+
+async def _async_cloud_local_keys(hass: HomeAssistant) -> dict[str, str] | None:
+    """Current local keys from the Tuya cloud integration, by device id.
+
+    Returns None when the Tuya cloud integration is not set up and loaded.
+    """
+    managers = [
+        manager
+        for entry in hass.config_entries.async_loaded_entries(TUYA_CLOUD)
+        if (manager := getattr(getattr(entry, "runtime_data", None), "manager", None))
+        is not None
+    ]
+    if not managers:
+        return None
+    keys: dict[str, str] = {}
+    for manager in managers:
+        try:
+            keys.update(
+                await hass.async_add_executor_job(_fetch_cloud_local_keys, manager)
+            )
+        except Exception as err:  # noqa: BLE001 - the cloud SDK raises anything
+            LOGGER.debug("Could not read local keys from the Tuya cloud: %s", err)
+    return keys
+
+
+def _new_local_key(entry: Any, keys: dict[str, str] | None) -> str | None:
+    """The cloud's local key for a Tuya Local device, when it differs."""
+    config = {**entry.data, **entry.options}
+    if not keys or config.get("device_cid"):
+        # Sub-devices use their gateway's key.
+        return None
+    key = keys.get(config.get("device_id"))
+    return key if key and key != config.get("local_key") else None
+
+
 async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
     """Point disconnected Tuya Local devices at the IP address they now announce.
 
-    Returns the names of the devices that were updated.
+    A disconnected device that announces itself at its saved address is usually
+    refusing Home Assistant's local key (the device was re-paired or reset), so
+    its key is refreshed from the Tuya cloud integration when the cloud has a
+    different one. Returns the names of the devices that were updated.
     """
     entries = [
         entry
@@ -982,6 +1039,7 @@ async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
         LOGGER.debug("Skipping the Tuya Local IP check: %s", err)
         return []
     moved = []
+    refused = []
     for entry in entries:
         config = {**entry.data, **entry.options}
         ip = (found.get(config.get("device_id")) or {}).get("ip")
@@ -994,6 +1052,18 @@ async def async_follow_tuya_local_ips(hass: HomeAssistant) -> list[str]:
             )
             _update_tuya_local_entry(hass, entry, {"host": ip})
             moved.append(entry.title)
+        elif ip:
+            refused.append(entry)
+    if refused:
+        keys = await _async_cloud_local_keys(hass)
+        for entry in refused:
+            if key := _new_local_key(entry, keys):
+                LOGGER.info(
+                    "%s has a new local key in the Tuya cloud; updating Tuya Local",
+                    entry.title,
+                )
+                _update_tuya_local_entry(hass, entry, {"local_key": key})
+                moved.append(entry.title)
     return moved
 
 
@@ -1022,7 +1092,10 @@ class CheckTuyaLocalDevicesTool(AdminTool):
         "version the device is announcing on the network right now (takes about "
         "20 seconds). A device whose announced_ip differs from host needs "
         "update_tuya_local_device. A device that announces nothing is switched "
-        "off, offline or on another network."
+        "off, offline or on another network. local_key_matches_cloud is false "
+        "when the Tuya cloud integration has a newer local key for the device "
+        "(it refuses connections; fix it with update_tuya_local_device and "
+        "refresh_local_key), and null when the cloud can't tell."
     )
 
     async def _async_run(
@@ -1032,6 +1105,7 @@ class CheckTuyaLocalDevicesTool(AdminTool):
         if not entries:
             raise HomeAssistantError("Tuya Local has no devices set up")
         found = await hass.async_add_executor_job(_scan_lan)
+        keys = await _async_cloud_local_keys(hass)
         devices = []
         for entry in entries:
             config = {**entry.data, **entry.options}
@@ -1047,6 +1121,13 @@ class CheckTuyaLocalDevicesTool(AdminTool):
                     "connected": _tuya_local_connected(hass, entry),
                     "announced_ip": announced.get("ip"),
                     "announced_version": announced.get("version"),
+                    "local_key_matches_cloud": (
+                        None
+                        if keys is None
+                        or config.get("device_cid")
+                        or config.get("device_id") not in keys
+                        else _new_local_key(entry, keys) is None
+                    ),
                 }
             )
         devices.sort(key=lambda d: (d["connected"], d["name"] or ""))
@@ -1059,15 +1140,17 @@ class UpdateTuyaLocalDeviceTool(AdminTool):
     name = "update_tuya_local_device"
     description = (
         "Change the IP address (host) and/or protocol version Tuya Local uses for "
-        "one device, by the entry_id from check_tuya_local_devices. The device "
-        "reconnects straight away. Only call after the user has confirmed the "
-        "change."
+        "one device, by the entry_id from check_tuya_local_devices, or set "
+        "refresh_local_key to copy the device's current local key from the Tuya "
+        "cloud integration. The device reconnects straight away. Only call after "
+        "the user has confirmed the change."
     )
     parameters = vol.Schema(
         {
             vol.Required("entry_id"): cv.string,
             vol.Optional("host"): cv.string,
             vol.Optional("protocol_version"): vol.In(TUYA_PROTOCOLS),
+            vol.Optional("refresh_local_key"): cv.boolean,
         }
     )
 
@@ -1086,10 +1169,36 @@ class UpdateTuyaLocalDeviceTool(AdminTool):
             changes["protocol_version"] = (
                 version if version == "auto" else float(version)
             )
-        if not changes:
-            raise HomeAssistantError("Give a host, a protocol_version or both")
-        _update_tuya_local_entry(hass, entry, changes)
-        return {"success": True, "name": entry.title, **changes}
+        result: dict[str, Any] = {}
+        if args.get("refresh_local_key"):
+            config = {**entry.data, **entry.options}
+            if config.get("device_cid"):
+                raise HomeAssistantError(
+                    "This is a sub-device; refresh the key of its gateway instead"
+                )
+            keys = await _async_cloud_local_keys(hass)
+            if keys is None:
+                raise HomeAssistantError(
+                    "The Tuya cloud integration is not set up or not loaded"
+                )
+            if config.get("device_id") not in keys:
+                raise HomeAssistantError(
+                    "The Tuya cloud has no local key for this device"
+                )
+            if key := _new_local_key(entry, keys):
+                changes["local_key"] = key
+                result["local_key_updated"] = True
+            else:
+                result["local_key_updated"] = False
+        elif not changes:
+            raise HomeAssistantError(
+                "Give a host, a protocol_version or refresh_local_key"
+            )
+        if changes:
+            _update_tuya_local_entry(hass, entry, changes)
+        # Never echo the key itself.
+        changes.pop("local_key", None)
+        return {"success": True, "name": entry.title, **changes, **result}
 
 
 class ReportIssueTool(AdminTool):
