@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-05 (04:55)
+**Last updated:** 2026-11-06 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -17,7 +17,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 | Item | Value |
 | --- | --- |
 | Owner | Jacques De Kock (GitHub `JacDK777`) |
-| Home Assistant version | 2026.10.2 (from `.HA_VERSION`) |
+| Home Assistant version | 2026.11.0 (updated 2026-11-05 about 10:43) |
 | Config folder in the Terminal & SSH add-on | `/homeassistant` (not `/config` on this version) |
 | Network | TP-Link Deco mesh (Deco app; login in credentials). LAN `192.168.68.x`; HA at `192.168.68.148:8123`; NAS at `192.168.0.153` |
 | Remote access | Home Assistant Cloud (Nabu Casa); URL in credentials |
@@ -67,6 +67,16 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   the dashboard first, then restart HA. Run in the Terminal add-on:
   `curl -sL https://raw.githubusercontent.com/JacDK777/Home-Assistant-Alfred/3e492a6a44986e53616657a7cc435a63ce3d07e6/scripts/tuya_swap.py -o /tmp/tuya_swap.py && python3 /tmp/tuya_swap.py`
   (`apk add python3` if python3 is missing).
+
+### `JacDK777/Alfred_App`: the standalone Alfred phone app
+- Android app (sideloaded on the S22): "Hey Alfred" wake word, Claude (Sonnet by default) plus the HA MCP server,
+  so it has the same Assist and Alfred admin tools and asks before changing anything. Admin tools need an admin HA token.
+- Installs from the repo's Releases page; since PR #10 it checks GitHub on open and offers a one-tap **Update**
+  (also Settings → Updates → Check for Updates). Can be set as the phone's Digital assistant app.
+- Voice: the user's own designed Afrikaans "Alfred" voice on ElevenLabs (credit-limited; ran out on 2026-11-05),
+  PR #11 added Azure Speech "Willem" (free F0 tier, key pasted in Settings → Free voice, region South Africa North)
+  and an offline Afrikaans voice as backup. Keys live in the app's settings, not in this doc.
+- Worked on in the "Build standalone Alfred voice app" thread. Not in this hand-over routine's GitHub scope, so no copy of this doc there.
 
 ## 3. How Claude reaches Home Assistant
 
@@ -172,8 +182,10 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 - TVs can't be turned on from HA (see section 5).
 - Garage wall switch "Downstairs Light Switch 3" dropped off the local network on 2026-10-27 (no reply at 192.168.68.144,
   still online in Smart Life); waiting on its new IP from the Deco or a breaker power cycle. Reserve its IP once found.
-- Standalone Alfred voice app (Android, "Hey Alfred" wake word, Claude + HA) planned; waiting on a new GitHub repo,
-  a Picovoice access key (goes in credentials.md) and an OK to sideload.
+- Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
+- Main Bedroom: all 5 downlights unavailable since the HA 2026.11.0 restart on 2026-11-05 (same IPs, Tuya Local
+  refuses with error 901). One switch power cycle and a reload didn't help; the user will power-cycle the wall switch
+  or the breaker. The auto power cycle doesn't fire because the switch stayed on.
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Mika: the 12 `script.mika_*` voice scripts are now exposed to Assist (seen 2026-11-04; `mika_breastfeed_stop_side` stays hidden).
   Alfred 0.10.1 (PRs #17–#19) is installed and HA restarted (2026-11-04). Still to do: expose the 6 new scripts (medication, temperature, growth, pumping, bath timer, tummy time timer) and `sensor.mika_medication`, then test (user step).
@@ -194,6 +206,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-06: HA 2026.11.0; standalone Alfred app (`JacDK777/Alfred_App`, updater, voices) documented; Main Bedroom bulbs offline added to open items.
 - 2026-11-04: Voice logging for medication, temperature, growth and pumping (4 new Mika scripts; Alfred PR #17 for medication/temperature), plus bath and tummy time timers (Alfred PR #18); Alfred 0.10.1 installed (PR #19 fixed device-registry deprecation warnings). Alfred can now restart HA itself via call_action.
 - 2026-11-04: Mika voice scripts confirmed exposed to Assist; open item narrowed to sensors and a test log.
 - 2026-10-31: Two new water tank automations (stored readings in quiet windows; low-level alert with a 30-minute municipal fill option).
