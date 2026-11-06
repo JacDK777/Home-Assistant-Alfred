@@ -1264,6 +1264,40 @@ class SetWatchdogIgnoreTool(AdminTool):
         return {"success": True, "target": target, "ignored": args["ignore"]}
 
 
+class SetWatchdogFeedTool(AdminTool):
+    """Tell the watchdog which switch powers which bulbs."""
+
+    name = "set_watchdog_feed"
+    description = (
+        "Tell Alfred's watchdog that a wall switch (switch entity_id) cuts the "
+        "power to these bulbs (their light entity_ids), so they are expected to "
+        "be unavailable while the switch is off and are not repaired then. The "
+        "watchdog also learns this by itself; get_watchdog_status shows it as "
+        "powered_by. Only call after the user has confirmed."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("switch"): cv.entity_id,
+            vol.Required("entities"): vol.All(cv.ensure_list, [cv.entity_id]),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        registry = er.async_get(hass)
+        unknown = [
+            entity_id
+            for entity_id in [args["switch"], *args["entities"]]
+            if registry.async_get(entity_id) is None
+            and hass.states.get(entity_id) is None
+        ]
+        if unknown:
+            raise HomeAssistantError(f"Unknown entities: {', '.join(unknown)}")
+        _watchdog(hass).teach_feed(args["switch"], args["entities"])
+        return {"success": True, "switch": args["switch"], "entities": args["entities"]}
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -1362,6 +1396,7 @@ class AlfredAdminAPI(llm.API):
             UpdateTuyaLocalDeviceTool(),
             GetWatchdogStatusTool(),
             SetWatchdogIgnoreTool(),
+            SetWatchdogFeedTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO

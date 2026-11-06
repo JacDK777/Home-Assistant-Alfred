@@ -10,7 +10,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntryDisabler
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, llm
+from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 
 from custom_components.alfred.admin import ADMIN_API_ID
 from custom_components.alfred.watchdog import (
@@ -209,8 +209,77 @@ async def test_watchdog_tools(
     assert "androidtv_remote" in status["ignored_integrations"]
 
     assert (await call("set_watchdog_ignore", target=hub.entry_id))["ignored"]
+    hass.states.async_set("switch.wall", "on")
+    hass.states.async_set("light.bulb", "on")
+    await call("set_watchdog_feed", switch="switch.wall", entities=["light.bulb"])
+    assert (await call("get_watchdog_status"))["powered_by"] == {
+        "light.bulb": "switch.wall"
+    }
+    with pytest.raises(HomeAssistantError, match="Unknown"):
+        await call("set_watchdog_feed", switch="switch.nope", entities=["light.bulb"])
     assert hub.entry_id in (await call("get_watchdog_status"))["ignored"]
     await call("set_watchdog_ignore", target=hub.entry_id, ignore=False)
     assert (await call("get_watchdog_status"))["ignored"] == []
     with pytest.raises(HomeAssistantError, match="No entity"):
         await call("set_watchdog_ignore", target="light.nope")
+
+
+async def test_learns_which_switch_powers_a_bulb(
+    hass: HomeAssistant, setup_alfred, freezer, reload
+) -> None:
+    """A bulb that drops out after its wall switch turns off is left alone."""
+    watchdog = async_get_watchdog(hass)
+    hub = MockConfigEntry(domain="zha", title="Zigbee")
+    hub.add_to_hass(hass)
+    bulb = _entity(hass, hub, "bedroom_dl_1", "on")
+    hass.states.async_set("switch.bedroom_wall", "on")
+    hass.states.async_set("switch.kettle", "on")
+
+    for _ in range(2):
+        hass.states.async_set("switch.bedroom_wall", "off")
+        freezer.tick(timedelta(seconds=40))
+        hass.states.async_set(bulb, "unavailable")
+        freezer.tick(timedelta(minutes=5))
+        hass.states.async_set("switch.bedroom_wall", "on")
+        freezer.tick(timedelta(seconds=20))
+        hass.states.async_set(bulb, "on")
+        freezer.tick(timedelta(minutes=5))
+    assert watchdog.feed_of(bulb) == "switch.bedroom_wall"
+    assert watchdog.status()["powered_by"] == {bulb: "switch.bedroom_wall"}
+
+    # Off at the wall: expected, nothing to repair.
+    hass.states.async_set("switch.bedroom_wall", "off")
+    hass.states.async_set(bulb, "unavailable")
+    freezer.tick(GRACE_PERIOD)
+    await watchdog.async_check()
+    reload.assert_not_called()
+    assert watchdog.issues == {}
+
+    # Switch on but the bulb stays away: that is a fault.
+    hass.states.async_set("switch.bedroom_wall", "on")
+    await watchdog.async_check()
+    reload.assert_called_once_with(hub.entry_id)
+
+
+async def test_taught_feed(hass: HomeAssistant, setup_alfred, freezer, reload) -> None:
+    """A feed the user names counts straight away, for all of a bulb's entities."""
+    watchdog = async_get_watchdog(hass)
+    hub = MockConfigEntry(domain="zha")
+    hub.add_to_hass(hass)
+    registry = er.async_get(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=hub.entry_id, identifiers={("zha", "b1")}
+    )
+    light = registry.async_get_or_create(
+        "light", "zha", "b1-light", config_entry=hub, device_id=device.id
+    )
+    scene = registry.async_get_or_create(
+        "select", "zha", "b1-scene", config_entry=hub, device_id=device.id
+    )
+    hass.states.async_set(light.entity_id, "unavailable")
+    hass.states.async_set(scene.entity_id, "unavailable")
+    hass.states.async_set("switch.wall", "off")
+    watchdog.teach_feed("switch.wall", [light.entity_id])
+    freezer.tick(GRACE_PERIOD)
+    await watchdog.async_check()
+    reload.assert_not_called()

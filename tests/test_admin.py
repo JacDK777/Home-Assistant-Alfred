@@ -106,6 +106,7 @@ async def test_admin_tools_only_for_admins(
         "update_tuya_local_device",
         "get_watchdog_status",
         "set_watchdog_ignore",
+        "set_watchdog_feed",
     }
 
     hass_admin_user.groups = []

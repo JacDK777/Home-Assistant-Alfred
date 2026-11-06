@@ -7,6 +7,10 @@ bring that entry back:
 - Tuya Local devices first get Alfred's IP and local key follow (admin.py), and
   are only reloaded when the device still announces itself on the network (a
   bulb that announces nothing has no power, so reloading it can't help).
+- Bulbs that are switched off at the wall are unavailable too. The watchdog
+  learns which switch powers which bulb (a bulb that drops out right after a
+  switch turns off, and comes back right after it turns on, twice) and leaves a
+  bulb alone while its switch is off. It can also be told.
 - Everything else is reloaded, with a growing pause between attempts.
 
 The watchdog remembers what it did. When an entry comes back after a repair the
@@ -25,8 +29,13 @@ from typing import Any
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    EVENT_STATE_CHANGED,
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+)
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er, storage
 from homeassistant.helpers.event import async_track_time_interval
@@ -49,6 +58,12 @@ NOTIFY_AFTER_ATTEMPTS = 3
 # from a repair is only reported from then on.
 GIVE_UP_AFTER_TRIES = 6
 HISTORY_LENGTH = 50
+# A bulb that goes unavailable this soon after a switch turns off (or comes
+# back this soon after it turns on) is probably powered by that switch.
+FEED_WINDOW = timedelta(minutes=3)
+# How often that has to be seen before the watchdog relies on it.
+FEED_MIN_SEEN = 2
+TAUGHT = 100
 # Spread reloads out when a lot goes down at once (a Wi-Fi or power outage).
 MAX_RELOADS_PER_CHECK = 5
 
@@ -99,6 +114,10 @@ class Watchdog:
         self.history: list[dict[str, Any]] = []
         # integration domain -> {"tries": int, "fixes": int}
         self.learned: dict[str, dict[str, int]] = {}
+        # entity_id -> {switch entity_id: times seen}: which switch powers it.
+        self.feeds: dict[str, dict[str, int]] = {}
+        # switch entity_id -> (state it changed to, when), for recent changes.
+        self._recent: dict[str, tuple[str, datetime]] = {}
 
     async def async_load(self) -> None:
         """Load what the watchdog remembered from before a restart."""
@@ -107,6 +126,7 @@ class Watchdog:
         self.issues = data.get("issues", {})
         self.history = data.get("history", [])
         self.learned = data.get("learned", {})
+        self.feeds = data.get("feeds", {})
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -114,6 +134,7 @@ class Watchdog:
             "issues": self.issues,
             "history": self.history[-HISTORY_LENGTH:],
             "learned": self.learned,
+            "feeds": self.feeds,
         }
 
     def _save(self) -> None:
@@ -152,11 +173,70 @@ class Watchdog:
             self.ignored.discard(target)
         self._save()
 
+    @callback
+    def async_state_changed(self, event: Event[EventStateChangedData]) -> None:
+        """Learn which switch powers which bulb from the order things happen in."""
+        entity_id = event.data["entity_id"]
+        old, new = event.data["old_state"], event.data["new_state"]
+        if old is None or new is None or old.state == new.state:
+            return
+        now = new.last_changed
+        if (
+            entity_id.split(".", 1)[0] in ("switch", "light")
+            and old.state in (STATE_ON, STATE_OFF)
+            and new.state in (STATE_ON, STATE_OFF)
+        ):
+            self._recent[entity_id] = (new.state, now)
+            return
+        if new.state == STATE_UNAVAILABLE:
+            expected = STATE_OFF
+        elif old.state == STATE_UNAVAILABLE:
+            expected = STATE_ON
+        else:
+            return
+        seen = False
+        for switch, (state, when) in list(self._recent.items()):
+            if now - when > FEED_WINDOW:
+                del self._recent[switch]
+            elif state == expected and switch != entity_id:
+                counts = self.feeds.setdefault(entity_id, {})
+                counts[switch] = counts.get(switch, 0) + 1
+                seen = True
+        if seen:
+            self._save()
+
+    def feed_of(self, entity_id: str) -> str | None:
+        """The switch the watchdog has learned powers this entity."""
+        counts = self.feeds.get(entity_id)
+        if not counts:
+            return None
+        switch, seen = max(counts.items(), key=lambda item: item[1])
+        return switch if seen >= FEED_MIN_SEEN else None
+
+    def teach_feed(self, switch: str, entity_ids: list[str]) -> None:
+        """Record that a switch powers these entities."""
+        for entity_id in entity_ids:
+            self.feeds[entity_id] = {switch: TAUGHT}
+        self._save()
+
+    def _powered_off(self, entity: er.RegistryEntry, device_feeds: dict) -> bool:
+        switch = self.feed_of(entity.entity_id) or device_feeds.get(entity.device_id)
+        if switch is None:
+            return False
+        state = self.hass.states.get(switch)
+        return state is not None and state.state == STATE_OFF
+
     def unavailable_by_entry(self) -> dict[str, list[str]]:
         """Entities unavailable for longer than the grace period, by config entry."""
         now = dt_util.utcnow()
         entities = er.async_get(self.hass)
         found: dict[str, list[str]] = {}
+        # A bulb's other entities (scene, timer...) share its power supply.
+        device_feeds: dict[str, str] = {}
+        for entity_id in self.feeds:
+            entity = entities.async_get(entity_id)
+            if entity and entity.device_id and (switch := self.feed_of(entity_id)):
+                device_feeds[entity.device_id] = switch
         for entity in entities.entities.values():
             if (
                 entity.disabled_by is not None
@@ -171,6 +251,7 @@ class Watchdog:
                 state is None
                 or state.state != STATE_UNAVAILABLE
                 or now - state.last_changed < GRACE_PERIOD
+                or self._powered_off(entity, device_feeds)
             ):
                 continue
             found.setdefault(entity.config_entry_id, []).append(entity.entity_id)
@@ -329,6 +410,11 @@ class Watchdog:
             "history": list(reversed(self.history[-20:])),
             "learned": self.learned,
             "ignored": sorted(self.ignored),
+            "powered_by": {
+                entity_id: switch
+                for entity_id in sorted(self.feeds)
+                if (switch := self.feed_of(entity_id))
+            },
             "ignored_integrations": sorted(DEFAULT_IGNORED_DOMAINS - {DOMAIN}),
         }
 
@@ -354,9 +440,13 @@ async def async_start_watchdog(hass: HomeAssistant) -> Callable[[], None]:
     stop = async_track_time_interval(
         hass, _async_tick, WATCHDOG_INTERVAL, name="Alfred watchdog"
     )
+    stop_listening = hass.bus.async_listen(
+        EVENT_STATE_CHANGED, watchdog.async_state_changed
+    )
 
     def _stop() -> None:
         stop()
+        stop_listening()
         hass.data.pop(STORAGE_KEY, None)
 
     return _stop
