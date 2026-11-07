@@ -115,6 +115,9 @@ async def test_skips_ignored_and_expected(
     """Ignored entities, TVs and disabled entries are left alone."""
     watchdog = async_get_watchdog(hass)
     tv = MockConfigEntry(domain="androidtv_remote", title="Bedroom TV")
+    group = MockConfigEntry(domain="group", title="Kitchen Lights")
+    group.add_to_hass(hass)
+    _entity(hass, group, "kitchen_lights", "unavailable")
     hub = MockConfigEntry(domain="rainbird", title="Rain Bird")
     off = MockConfigEntry(
         domain="ring", title="Ring", disabled_by=ConfigEntryDisabler.USER
@@ -245,6 +248,13 @@ async def test_learns_which_switch_powers_a_bulb(
         hass.states.async_set(bulb, "on")
         freezer.tick(timedelta(minutes=5))
     assert watchdog.feed_of(bulb) == "switch.bedroom_wall"
+    # Only bulbs learn a supply; a TV dropping out after a timer is a coincidence.
+    for _ in range(2):
+        hass.states.async_set("switch.timer", "on")
+        hass.states.async_set("switch.timer", "off")
+        hass.states.async_set("media_player.tv", "on")
+        hass.states.async_set("media_player.tv", "unavailable")
+    assert watchdog.feed_of("media_player.tv") is None
     assert watchdog.status()["powered_by"] == {bulb: "switch.bedroom_wall"}
 
     # Off at the wall: expected, nothing to repair.
