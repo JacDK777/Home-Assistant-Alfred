@@ -14,6 +14,12 @@ CONF_MAX_TOKENS = "max_tokens"
 CONF_WEB_SEARCH = "web_search"
 CONF_GITHUB_TOKEN = "github_token"
 CONF_GITHUB_REPO = "github_repo"
+CONF_TUYA_ACCESS_ID = "tuya_access_id"
+CONF_TUYA_ACCESS_SECRET = "tuya_access_secret"
+CONF_TUYA_DATA_CENTER = "tuya_data_center"
+CONF_WIFI_SSID = "wifi_ssid"
+CONF_WIFI_PASSWORD = "wifi_password"
+TUYA_DATA_CENTERS = ["eu", "weu", "us", "eus", "cn", "in"]
 
 DEFAULT_CHAT_MODEL = "claude-haiku-5-5"
 DEFAULT_EFFORT = "low"

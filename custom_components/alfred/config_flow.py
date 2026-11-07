@@ -40,7 +40,12 @@ from .const import (
     CONF_GITHUB_TOKEN,
     CONF_MAX_TOKENS,
     CONF_PROMPT,
+    CONF_TUYA_ACCESS_ID,
+    CONF_TUYA_ACCESS_SECRET,
+    CONF_TUYA_DATA_CENTER,
     CONF_WEB_SEARCH,
+    CONF_WIFI_PASSWORD,
+    CONF_WIFI_SSID,
     DEFAULT_CHAT_MODEL,
     DEFAULT_EFFORT,
     DEFAULT_GITHUB_REPO,
@@ -52,6 +57,7 @@ from .const import (
     EFFORT_OPTIONS,
     LOGGER,
     MODEL_OPTIONS,
+    TUYA_DATA_CENTERS,
 )
 
 API_KEYS_URL = "https://platform.claude.com/settings/keys"
@@ -218,6 +224,36 @@ class AlfredOptionsFlow(OptionsFlow):
                         )
                     },
                 ): TextSelector(),
+                vol.Optional(
+                    CONF_TUYA_ACCESS_ID,
+                    description={"suggested_value": options.get(CONF_TUYA_ACCESS_ID)},
+                ): TextSelector(),
+                vol.Optional(
+                    CONF_TUYA_ACCESS_SECRET,
+                    description={
+                        "suggested_value": options.get(CONF_TUYA_ACCESS_SECRET)
+                    },
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
+                vol.Optional(
+                    CONF_TUYA_DATA_CENTER,
+                    description={
+                        "suggested_value": options.get(CONF_TUYA_DATA_CENTER, "eu")
+                    },
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=TUYA_DATA_CENTERS,
+                        translation_key=CONF_TUYA_DATA_CENTER,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
+                    CONF_WIFI_SSID,
+                    description={"suggested_value": options.get(CONF_WIFI_SSID)},
+                ): TextSelector(),
+                vol.Optional(
+                    CONF_WIFI_PASSWORD,
+                    description={"suggested_value": options.get(CONF_WIFI_PASSWORD)},
+                ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
