@@ -108,6 +108,7 @@ async def test_admin_tools_only_for_admins(
         "get_watchdog_status",
         "set_watchdog_ignore",
         "set_watchdog_feed",
+        "tuya_cloud_device",
     }
 
     hass_admin_user.groups = []
@@ -915,3 +916,67 @@ async def test_call_action(
 
     with pytest.raises(HomeAssistantError, match="no action"):
         await _call(api, "call_action", domain="light", action="explode")
+
+
+async def test_tuya_cloud_device(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, tuya_cloud
+) -> None:
+    """Smart Life device settings can be read and changed through the cloud."""
+    api = await _api(hass, hass_admin_user)
+    with pytest.raises(HomeAssistantError, match="not set up"):
+        await _call(api, "tuya_cloud_device", search="switch")
+
+    manager = tuya_cloud({})
+    switch = SimpleNamespace(
+        id="sw1",
+        name="Great Room Switch3",
+        product_name="3 gang switch",
+        category="kg",
+        online=True,
+        status={"switch_1": True, "relay_status": "power_off"},
+        function={
+            "relay_status": SimpleNamespace(
+                type="Enum", values='{"range":["power_off","power_on","last"]}'
+            )
+        },
+    )
+    bulb = SimpleNamespace(id="b1", name="Kitchen DL 1", online=False)
+    manager.device_map = {"sw1": switch, "b1": bulb}
+
+    result = await _call(api, "tuya_cloud_device", search="great")
+    assert result == {
+        "devices": [
+            {
+                "device_id": "sw1",
+                "name": "Great Room Switch3",
+                "product": "3 gang switch",
+                "category": "kg",
+                "online": True,
+            }
+        ],
+        "truncated": False,
+    }
+    result = await _call(api, "tuya_cloud_device", device_id="sw1")
+    assert result["status"]["relay_status"] == "power_off"
+    assert result["settable"]["relay_status"]["type"] == "Enum"
+
+    result = await _call(
+        api, "tuya_cloud_device", device_id="sw1", set={"relay_status": "last"}
+    )
+    assert result == {
+        "success": True,
+        "device_id": "sw1",
+        "sent": {"relay_status": "last"},
+    }
+    manager.send_commands.assert_called_once_with(
+        "sw1", [{"code": "relay_status", "value": "last"}]
+    )
+    with pytest.raises(HomeAssistantError, match="does not accept switch_9"):
+        await _call(api, "tuya_cloud_device", device_id="sw1", set={"switch_9": True})
+    with pytest.raises(HomeAssistantError, match="No Tuya cloud device"):
+        await _call(api, "tuya_cloud_device", device_id="nope")
+    manager.send_commands.side_effect = RuntimeError("offline")
+    with pytest.raises(HomeAssistantError, match="refused: offline"):
+        await _call(
+            api, "tuya_cloud_device", device_id="sw1", set={"relay_status": "last"}
+        )

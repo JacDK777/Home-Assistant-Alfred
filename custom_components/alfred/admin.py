@@ -1023,12 +1023,7 @@ async def _async_cloud_local_keys(hass: HomeAssistant) -> dict[str, str] | None:
 
     Returns None when the Tuya cloud integration is not set up and loaded.
     """
-    managers = [
-        manager
-        for entry in hass.config_entries.async_loaded_entries(TUYA_CLOUD)
-        if (manager := getattr(getattr(entry, "runtime_data", None), "manager", None))
-        is not None
-    ]
+    managers = _cloud_managers(hass)
     if not managers:
         return None
     keys: dict[str, str] = {}
@@ -1331,6 +1326,105 @@ class SetWatchdogFeedTool(AdminTool):
         return {"success": True, "switch": args["switch"], "entities": args["entities"]}
 
 
+def _cloud_managers(hass: HomeAssistant) -> list[Any]:
+    """Device managers of the loaded Tuya cloud (Smart Life) integrations."""
+    return [
+        manager
+        for entry in hass.config_entries.async_loaded_entries(TUYA_CLOUD)
+        if (manager := getattr(getattr(entry, "runtime_data", None), "manager", None))
+        is not None
+    ]
+
+
+def _cloud_device_info(device: Any, details: bool) -> dict[str, Any]:
+    """What Alfred shows about one Tuya cloud device."""
+    info: dict[str, Any] = {
+        "device_id": device.id,
+        "name": device.name,
+        "product": getattr(device, "product_name", None),
+        "category": getattr(device, "category", None),
+        "online": getattr(device, "online", None),
+    }
+    if details:
+        info["status"] = dict(getattr(device, "status", None) or {})
+        info["settable"] = {
+            code: {
+                "type": getattr(function, "type", None),
+                "values": getattr(function, "values", None),
+            }
+            for code, function in (getattr(device, "function", None) or {}).items()
+        }
+    return info
+
+
+class TuyaCloudDeviceTool(AdminTool):
+    """Read or change any setting of a Smart Life device through the Tuya cloud."""
+
+    name = "tuya_cloud_device"
+    description = (
+        "Read or change the settings of devices in the user's Smart Life (Tuya) "
+        "account, as the Smart Life app does, through Home Assistant's Tuya "
+        "integration. This reaches settings that have no entity in Home Assistant, "
+        "such as a wall switch's relay status (power-on behaviour, e.g. "
+        "relay_status=memory), indicator light mode or a bulb's power-on state. "
+        "Give search to find devices by name or id. Give device_id alone to see its "
+        "current status and the settings it accepts (code, type, allowed values). "
+        "Give device_id and set (code to value) to change settings; only codes "
+        "listed under settable work. Only change settings the user asked for."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Optional("search"): cv.string,
+            vol.Optional("device_id"): cv.string,
+            vol.Optional("set"): vol.Schema({cv.string: object}),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        managers = _cloud_managers(hass)
+        if not managers:
+            raise HomeAssistantError(
+                "The Tuya cloud integration is not set up and loaded in Home Assistant."
+            )
+        if device_id := args.get("device_id"):
+            for manager in managers:
+                device = (getattr(manager, "device_map", None) or {}).get(device_id)
+                if device is not None:
+                    break
+            else:
+                raise HomeAssistantError(
+                    "No Tuya cloud device with that device_id. Use search."
+                )
+            if not (changes := args.get("set")):
+                return _cloud_device_info(device, details=True)
+            settable = getattr(device, "function", None) or {}
+            if unknown := sorted(set(changes) - set(settable)):
+                raise HomeAssistantError(
+                    f"This device does not accept {', '.join(unknown)}. "
+                    f"Settable codes: {', '.join(sorted(settable))}."
+                )
+            commands = [
+                {"code": code, "value": value} for code, value in changes.items()
+            ]
+            try:
+                await hass.async_add_executor_job(
+                    manager.send_commands, device_id, commands
+                )
+            except Exception as err:  # noqa: BLE001 - the cloud SDK raises anything
+                raise HomeAssistantError(f"The Tuya cloud refused: {err}") from err
+            return {"success": True, "device_id": device_id, "sent": changes}
+        search = (args.get("search") or "").casefold()
+        found = [
+            _cloud_device_info(device, details=False)
+            for manager in managers
+            for device in (getattr(manager, "device_map", None) or {}).values()
+            if search in f"{device.name} {device.id}".casefold()
+        ]
+        return {"devices": found[:MAX_ENTITIES], "truncated": len(found) > MAX_ENTITIES}
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -1431,6 +1525,7 @@ class AlfredAdminAPI(llm.API):
             GetWatchdogStatusTool(),
             SetWatchdogIgnoreTool(),
             SetWatchdogFeedTool(),
+            TuyaCloudDeviceTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO
