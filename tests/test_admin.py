@@ -97,6 +97,7 @@ async def test_admin_tools_only_for_admins(
         "save_dashboard",
         "find_entities",
         "rename_entity",
+        "set_entity_enabled",
         "rename_device",
         "list_hacs_repositories",
         "download_hacs_repository",
@@ -652,6 +653,31 @@ async def test_rename_entity_and_device(
     assert result["name"] == "Switch 1"
     with pytest.raises(HomeAssistantError, match="No entity"):
         await _call(api, "rename_entity", entity_id="switch.nope", name="x")
+
+    result = await _call(
+        api,
+        "set_entity_enabled",
+        entity_id="switch.tania_office_switch_1",
+        enabled=False,
+    )
+    assert result == {
+        "success": True,
+        "entity_id": "switch.tania_office_switch_1",
+        "enabled": False,
+    }
+    assert entities.async_get("switch.tania_office_switch_1").disabled_by == (
+        er.RegistryEntryDisabler.USER
+    )
+    result = await _call(
+        api,
+        "set_entity_enabled",
+        entity_id="switch.tania_office_switch_1",
+        enabled=True,
+    )
+    assert result["enabled"] is True
+    assert entities.async_get("switch.tania_office_switch_1").disabled_by is None
+    with pytest.raises(HomeAssistantError, match="No entity"):
+        await _call(api, "set_entity_enabled", entity_id="switch.nope", enabled=True)
 
     result = await _call(
         api, "rename_device", device_id=device.id, name="Tania Office Switch"

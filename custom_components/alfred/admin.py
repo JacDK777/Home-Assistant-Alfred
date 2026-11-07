@@ -699,6 +699,39 @@ class RenameEntityTool(AdminTool):
         }
 
 
+class SetEntityEnabledTool(AdminTool):
+    """Turn a disabled entity on, or turn an entity off."""
+
+    name = "set_entity_enabled"
+    description = (
+        "Enable or disable an entity, by its entity_id from find_entities. Use it to "
+        "turn on a setting an integration hides by default, such as a Tuya switch's "
+        "Power-on behavior. Home Assistant reloads the integration about 30 seconds "
+        "after an entity is enabled, and the entity has a state after that. Only "
+        "call after the user has asked for the change."
+    )
+    parameters = vol.Schema(
+        {vol.Required("entity_id"): cv.entity_id, vol.Required("enabled"): bool}
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        entities = er.async_get(hass)
+        if entities.async_get(args["entity_id"]) is None:
+            raise HomeAssistantError(
+                "No entity with that entity_id in the entity registry. "
+                "Use find_entities."
+            )
+        disabled_by = None if args["enabled"] else er.RegistryEntryDisabler.USER
+        entry = entities.async_update_entity(args["entity_id"], disabled_by=disabled_by)
+        return {
+            "success": True,
+            "entity_id": entry.entity_id,
+            "enabled": entry.disabled_by is None,
+        }
+
+
 class RenameDeviceTool(AdminTool):
     """Change the name a device is shown with."""
 
@@ -1387,6 +1420,7 @@ class AlfredAdminAPI(llm.API):
             SaveDashboardTool(),
             FindEntitiesTool(),
             RenameEntityTool(),
+            SetEntityEnabledTool(),
             RenameDeviceTool(),
             ListHacsRepositoriesTool(),
             DownloadHacsRepositoryTool(),
