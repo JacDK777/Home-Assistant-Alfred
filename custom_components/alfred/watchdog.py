@@ -83,6 +83,25 @@ DEFAULT_IGNORED_DOMAINS = frozenset(
     }
 )
 
+# Helpers that combine other entities (light groups, templates...) are
+# unavailable whenever their members are; repairing the members is what helps.
+DERIVED_DOMAINS = frozenset(
+    {
+        "derivative",
+        "filter",
+        "group",
+        "integration",
+        "min_max",
+        "statistics",
+        "switch_as_x",
+        "template",
+        "threshold",
+        "trend",
+        "utility_meter",
+    }
+)
+SKIPPED_DOMAINS = DEFAULT_IGNORED_DOMAINS | DERIVED_DOMAINS
+
 TUYA_LOCAL = "tuya_local"
 ACTION_RELOAD = "reload"
 
@@ -123,10 +142,24 @@ class Watchdog:
         """Load what the watchdog remembered from before a restart."""
         data = await self._store.async_load() or {}
         self.ignored = set(data.get("ignored", []))
-        self.issues = data.get("issues", {})
+        self.issues = {
+            entry_id: issue
+            for entry_id, issue in data.get("issues", {}).items()
+            if issue.get("integration") not in SKIPPED_DOMAINS
+        }
+        for entry_id in set(data.get("issues", {})) - set(self.issues):
+            persistent_notification.async_dismiss(self.hass, _notification_id(entry_id))
         self.history = data.get("history", [])
-        self.learned = data.get("learned", {})
-        self.feeds = data.get("feeds", {})
+        self.learned = {
+            domain: stats
+            for domain, stats in data.get("learned", {}).items()
+            if domain not in SKIPPED_DOMAINS
+        }
+        self.feeds = {
+            entity_id: counts
+            for entity_id, counts in data.get("feeds", {}).items()
+            if entity_id.startswith("light.")
+        }
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -188,6 +221,9 @@ class Watchdog:
         ):
             self._recent[entity_id] = (new.state, now)
             return
+        if not entity_id.startswith("light."):
+            # Only bulbs are powered by a wall switch.
+            return
         if new.state == STATE_UNAVAILABLE:
             expected = STATE_OFF
         elif old.state == STATE_UNAVAILABLE:
@@ -241,7 +277,7 @@ class Watchdog:
             if (
                 entity.disabled_by is not None
                 or entity.config_entry_id is None
-                or entity.platform in DEFAULT_IGNORED_DOMAINS
+                or entity.platform in SKIPPED_DOMAINS
                 or entity.entity_id in self.ignored
                 or entity.config_entry_id in self.ignored
             ):
@@ -306,7 +342,7 @@ class Watchdog:
             if (
                 entry is None
                 or entry.disabled_by is not None
-                or entry.domain in DEFAULT_IGNORED_DOMAINS
+                or entry.domain in SKIPPED_DOMAINS
             ):
                 continue
             issue = self.issues.get(entry_id)
@@ -328,7 +364,8 @@ class Watchdog:
                 continue
             if not self.repairs_help(entry.domain):
                 issue["skipped"] = "reloading never fixed this integration"
-                self._notify(entry, issue)
+                if issue["attempts"]:
+                    self._notify(entry, issue)
                 changed = True
                 continue
             if entry.domain == TUYA_LOCAL:
@@ -392,7 +429,7 @@ class Watchdog:
             self.hass,
             (
                 f"{entry.title} ({entry.domain}) has been unavailable since "
-                f"{issue['down_since']}. {tried}. Unavailable: "
+                f"{_local(issue['down_since'])}. {tried}. Unavailable: "
                 f"{', '.join(issue['entities'])}. Ask Alfred to ignore it if "
                 "this is expected."
             ),
@@ -415,8 +452,13 @@ class Watchdog:
                 for entity_id in sorted(self.feeds)
                 if (switch := self.feed_of(entity_id))
             },
-            "ignored_integrations": sorted(DEFAULT_IGNORED_DOMAINS - {DOMAIN}),
+            "ignored_integrations": sorted(SKIPPED_DOMAINS - {DOMAIN}),
         }
+
+
+def _local(value: str) -> str:
+    when = _parse(value)
+    return dt_util.as_local(when).strftime("%-d %b %H:%M") if when else value
 
 
 def _notification_id(entry_id: str) -> str:
