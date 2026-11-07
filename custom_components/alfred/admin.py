@@ -39,6 +39,12 @@ from .const import (
     DOMAIN,
     LOGGER,
 )
+from .pairing import (
+    MAX_PAIRING_SECONDS,
+    PAIRING_SECONDS,
+    async_start_pairing,
+    pairing_run,
+)
 
 ADMIN_API_ID = "alfred_admin"
 ADMIN_API_NAME = "Alfred admin (error log, automations, scripts, issues)"
@@ -1606,6 +1612,50 @@ class TuyaCloudDeviceTool(AdminTool):
         return {"devices": found[:MAX_ENTITIES], "truncated": len(found) > MAX_ENTITIES}
 
 
+class PairTuyaDevicesTool(AdminTool):
+    """Re-add Tuya devices that fell back into pairing mode."""
+
+    name = "pair_tuya_devices"
+    description = (
+        "Re-add Tuya (Smart Life) devices that are in pairing mode, so the user "
+        "does not have to use the Smart Life app. A device is in pairing mode when "
+        "it flashes quickly and never shows up on the network (check_tuya_local_"
+        "devices shows announcing false) even though it has power. action=start "
+        "sends the Wi-Fi details from Home Assistant for the given seconds (default "
+        "120) and runs in the background; every fast-flashing device in range joins "
+        "the user's Smart Life home again, and Tuya Local gets its new key. "
+        "action=status shows the result. Needs the Tuya Access ID and secret and "
+        "the Wi-Fi details in Alfred's settings. Slowly flashing devices (AP mode) "
+        "are not reached; toggling their power 3 times quickly usually switches "
+        "them to fast flashing."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("action"): vol.In(["start", "status"]),
+            vol.Optional("seconds", default=PAIRING_SECONDS): vol.All(
+                int, vol.Range(min=30, max=MAX_PAIRING_SECONDS)
+            ),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        if args["action"] == "status":
+            return pairing_run(hass).as_dict()
+        # Any device of the user's home tells the Tuya cloud which account to use.
+        device_id = next(
+            (
+                device_id
+                for manager in _cloud_managers(hass)
+                for device_id in getattr(manager, "device_map", None) or {}
+            ),
+            None,
+        )
+        run = await async_start_pairing(hass, args["seconds"], device_id)
+        return {"started": True, "seconds": args["seconds"], **run.as_dict()}
+
+
 class ReportIssueTool(AdminTool):
     """File a GitHub issue about Alfred, with its recent log entries attached."""
 
@@ -1710,6 +1760,7 @@ class AlfredAdminAPI(llm.API):
             SetWatchdogIgnoreTool(),
             SetWatchdogFeedTool(),
             TuyaCloudDeviceTool(),
+            PairTuyaDevicesTool(),
         ]
         if token := self.options.get(CONF_GITHUB_TOKEN):
             repo = self.options.get(CONF_GITHUB_REPO) or DEFAULT_GITHUB_REPO
