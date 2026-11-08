@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-07 (04:55)
+**Last updated:** 2026-11-08 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -173,6 +173,7 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
 | Water Tank: store reading after measuring window | `automation.water_tank_store_reading_after_measuring_window` | on | At 05:30, 07:30, 19:30 and 22:30 saves the 30-min median level into `input_number.water_tank_level` (ignores 0% unless already ≤10%) |
 | Water Tank: low level alert with fill option | `automation.water_tank_low_level_alert_with_fill_option` | on | After each stored reading below 20%, asks on the JDK phone to fill; Yes runs Rain Bird "Municipal Tank Input" for 30 min |
+| Jacques onthou: huis toe vir rugby | `automation.jacques_onthou_huis_toe_vir_rugby` | on | One-off reminder made by Alfred: 12:30 on 2026-11-07, phone notification if Jacques isn't home (rugby). Expired; safe to delete |
 
 **Bulb auto power cycle:** when the room's wall switch turns on, watch its bulbs for up to 5 minutes and stop as
 soon as all connect. Only if a bulb is still unavailable after 5 minutes **and the switch stayed on the whole
@@ -220,6 +221,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-08: New one-off automation "Jacques onthou: huis toe vir rugby" (7 Nov reminder, now expired) noted.
 - 2026-11-07: Alfred 0.12.2 (Smart Life settings tools, watchdog fixes); re-pairing PR #25 and app look tool open; living room TV app scripts; Main Bedroom bulbs fixed (removed from open items); standing rules added.
 - 2026-11-06 (later): Alfred 0.12.0 (PR #22) adds a **watchdog**: every 5 min, entities unavailable 10+ min get their integration reloaded (back-off 10m→6h, max 5 per check); Tuya Local devices that don't announce (no power) are skipped; it learns which wall switch powers which bulb and ignores bulbs while their switch is off; notifies after 3 failed tries; stops reloading integrations reloads never fix. Tools: get_watchdog_status, set_watchdog_ignore, set_watchdog_feed. TVs/phones ignored by default. Data in `.storage/alfred.watchdog`.
 - 2026-11-06: Main Bedroom DL 1–5 were unavailable since the HA 2026.11.0 update (bulbs refused the saved local key, tinytuya 914). Alfred 0.11.0/0.11.1 (PRs #20, #21) now copies fresh local keys from the Tuya cloud integration into Tuya Local automatically (5-min check) and via `update_tuya_local_device refresh_local_key`. Bedroom bulbs fixed. All Tuya IPs are reserved in the Deco (confirmed by Jacques).
