@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-08 (04:55)
+**Last updated:** 2026-11-09 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -163,7 +163,7 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Garage Light Activate | `automation.garage_light_activate` | on | Garage light 05:00–09:00 on weekdays |
 | Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
 | Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes (no door-state check). Ignores unavailable/unknown (no opening on restarts) and switch changes made by an automation, so the sync below never moves the door. 5-second lockout after each command: wait ~5 s between presses |
-| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch (gang 3) in step with the door; only acts when they disagree, and re-syncs on HA start |
+| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch (gang 3) in step with the door. Re-checks on door change, HA start, switch or door coming back online, and every 2 minutes; only acts when they disagree and the switch wasn't pressed in the last 90 s (updated 2026-11-08) |
 | Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
 | Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
 | Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | on | See below |
@@ -193,8 +193,8 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
-- Garage wall switch "Downstairs Light Switch 3" dropped off the local network on 2026-10-27 (no reply at 192.168.68.144,
-  still online in Smart Life); waiting on its new IP from the Deco or a breaker power cycle. Reserve its IP once found.
+- Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
+  the 2-minute re-sync above should stop that. Confirm the next press works (user).
 - Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
 - Alfred re-pairing (PR #25): waiting on Jacques to merge it, create a Tuya developer cloud project (platform.tuya.com,
   linked to Smart Life) and type its Access ID/Secret plus Wi-Fi details into Alfred's settings (not in chat or this doc);
@@ -206,9 +206,9 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
   Alfred 0.10.1 (PRs #17–#19) is installed and HA restarted (2026-11-04). Still to do: expose the 6 new scripts (medication, temperature, growth, pumping, bath timer, tummy time timer) and `sensor.mika_medication`, then test (user step).
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
-  or Zigbee/dumb bulbs). Waiting on the user in the "Fix Tuya Local bulbs" thread.
+  or Zigbee/dumb bulbs). That thread was closed on 2026-11-08 without a choice; the watchdog now covers most bulb drop-outs.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
-  waiting on the user in the "Remote card update and live typing" thread. Optional restyle of both remotes offered.
+  that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
 - Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
 - `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
 - NAS password moved to `secrets.yaml` (config PR #2), but it is still in git history: change the NAS password.
@@ -221,6 +221,7 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-09: Garage Switch Follows Door now re-syncs every 2 min and on reconnect; garage switch back online; bulb and remote threads closed.
 - 2026-11-08: New one-off automation "Jacques onthou: huis toe vir rugby" (7 Nov reminder, now expired) noted.
 - 2026-11-07: Alfred 0.12.2 (Smart Life settings tools, watchdog fixes); re-pairing PR #25 and app look tool open; living room TV app scripts; Main Bedroom bulbs fixed (removed from open items); standing rules added.
 - 2026-11-06 (later): Alfred 0.12.0 (PR #22) adds a **watchdog**: every 5 min, entities unavailable 10+ min get their integration reloaded (back-off 10m→6h, max 5 per check); Tuya Local devices that don't announce (no power) are skipped; it learns which wall switch powers which bulb and ignores bulbs while their switch is off; notifies after 3 failed tries; stops reloading integrations reloads never fix. Tools: get_watchdog_status, set_watchdog_ignore, set_watchdog_feed. TVs/phones ignored by default. Data in `.storage/alfred.watchdog`.
