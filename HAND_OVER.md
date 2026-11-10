@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-10-19 (06:55)
+**Last updated:** 2026-11-09 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -17,7 +17,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 | Item | Value |
 | --- | --- |
 | Owner | Jacques De Kock (GitHub `JacDK777`) |
-| Home Assistant version | 2026.10.2 (from `.HA_VERSION`) |
+| Home Assistant version | 2026.11.0 (updated 2026-11-05 about 10:43) |
 | Config folder in the Terminal & SSH add-on | `/homeassistant` (not `/config` on this version) |
 | Network | TP-Link Deco mesh (Deco app; login in credentials). LAN `192.168.68.x`; HA at `192.168.68.148:8123`; NAS at `192.168.0.153` |
 | Remote access | Home Assistant Cloud (Nabu Casa); URL in credentials |
@@ -50,20 +50,44 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.7.0. Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.12.2 (installed 2026-11-07). Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
   #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
   #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
   update_tuya_local_device, #9 auto-reconnect of Tuya Local devices to their new IP every 5 min,
   #10 rename_entity / rename_device, #12 HACS tools (list_hacs_repositories, download_hacs_repository)
   and dashboard resource tools (list/remove_dashboard_resource). Alfred always names the exact version and
-  waits for a yes before downloading anything from HACS.
-- After updating Alfred (HACS redownload + restart), start a **new Claude thread** to see the new tools.
+  waits for a yes before downloading anything from HACS. #15 (0.8.0) scenes (get/save/delete_scene), delete_automation /
+  delete_script and call_action (run any HA action). #16 butler icon. #17 (0.9.0) Huckleberry medication and
+  temperature actions, #18 (0.10.0) Huckleberry activity timers (bath, tummy time), #19 (0.10.1) device-registry deprecation fix.
+  #20/#21 (0.11.x) fresh Tuya Local keys from the Tuya cloud integration, #22/#23 (0.12.0/0.12.1) watchdog,
+  #24 (0.12.2) `set_entity_enabled` and `tuya_cloud_device` (read and change Smart Life device settings, everything but pairing).
+  Open: #25 automatic re-pairing (EZ mode) of bulbs in pairing mode.
+  Alfred can restart HA itself (call_action).
+- After updating Alfred (`update.alfred_update` install + restart; see the standing rule below), start a **new Claude thread** to see the new tools.
+- **Standing rule (Jacques, 2026-11-06): after Jacques merges an Alfred PR, Claude installs the update itself** (`update.install` on
+  `update.alfred_update` with the merge commit, then restart HA) without asking. HA 2026.11 replaced HACS with the built-in
+  Marketplace, which blocks installs until its warning is accepted once in the UI.
+- **Standing rule (Jacques, 2026-11-07): always give the best possible fix, even an unconventional one.** Before asking Jacques
+  to do something by hand (Smart Life app, HA UI), check whether Claude can do it: hidden or disabled entities (for example
+  the Tuya cloud `select.*_power_on_behavior`), the Tuya cloud API via HA, or a new Alfred tool in a PR. Offer that first.
+- Wall switches: set Power-on behavior / Relay Status to **memory** ("Restart Memory"). Tuya Local `*_initial_state` does not stick on
+  most switches, so use the Tuya cloud selects (enable with `set_entity_enabled`, Alfred 0.12.2+).
 - `scripts/tuya_swap.py` (merged in #7): swaps Tuya cloud entities
   on a dashboard for their Tuya Local twins by Tuya device ID. Dry run by default, `--apply` backs up
   the dashboard first, then restart HA. Run in the Terminal add-on:
   `curl -sL https://raw.githubusercontent.com/JacDK777/Home-Assistant-Alfred/3e492a6a44986e53616657a7cc435a63ce3d07e6/scripts/tuya_swap.py -o /tmp/tuya_swap.py && python3 /tmp/tuya_swap.py`
   (`apk add python3` if python3 is missing).
+
+### `JacDK777/Alfred_App`: the standalone Alfred phone app
+- Android app (sideloaded on the S22): "Hey Alfred" wake word, Claude (Sonnet by default) plus the HA MCP server,
+  so it has the same Assist and Alfred admin tools and asks before changing anything. Admin tools need an admin HA token.
+- Installs from the repo's Releases page; since PR #10 it checks GitHub on open and offers a one-tap **Update**
+  (also Settings → Updates → Check for Updates). Can be set as the phone's Digital assistant app.
+- Voice: the user's own designed Afrikaans "Alfred" voice on ElevenLabs (credit-limited; ran out on 2026-11-05),
+  PR #11 added Azure Speech "Willem" (free F0 tier, key pasted in Settings → Free voice, region South Africa North)
+  and an offline Afrikaans voice as backup. Keys live in the app's settings, not in this doc.
+- Worked on in the "Build standalone Alfred voice app" thread. Not in this hand-over routine's GitHub scope, so no copy of this doc there.
 
 ## 3. How Claude reaches Home Assistant
 
@@ -116,6 +140,16 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - **Remotes** dashboard: TV remotes use Universal Remote Card 4.12.1 (HACS); old android-tv-card / tv-card
     resources removed. Keyboard buttons use live typing; scripts `script.living_room_tv_type_text` and
     `script.bedroom_tv_type_text` send text. Live typing needs **Enable IME** on (Android TV Remote → Configure).
+- **Huckleberry** (baby tracker, Mika): HACS custom repo `Woyken/huckleberry-homeassistant` (now v0.5.9), added 2026-10-25,
+  signed in with the Huckleberry account (unofficial Firebase API). Device "Mika" (`device_id 3445e23e0b7211c4ef1c664f8163cdb5`):
+  `sensor.mika_sleep/nursing/bottle/diaper/growth/medication`, `switch.mika_sleep_timer`, `switch.mika_nursing_left/right`,
+  `calendar.mika_events`. Actions `huckleberry.log_bottle`, `log_diaper_*`, `log_activity`, `start/complete_sleep` etc.
+  **Mika** dashboard (`dashboard-mika`, UI-managed) has status tiles, quick-log buttons (bottles are breast milk) and a history calendar.
+  Voice logging via Alfred: scripts `script.mika_log_bottle` (default breast milk), `mika_log_nappy` (wet/dirty/both/dry with pee size, poo size, colour, consistency; refuses and asks if any are missing), `mika_sleep`, `mika_log_activity`,
+  `mika_log_solids`, breastfeeding `mika_breastfeed_start` (asks "which side?"), `mika_breastfeed_start_left/right`,
+  `mika_breastfeed_stop_left/right` (pause that side, feed stays open), `mika_breastfeed_stop` (save the feed), and
+  `mika_nursing` ("breastfeeding extras": switch/pause/resume/cancel). Helper `mika_breastfeed_stop_side` is not exposed.
+  Added 2026-11-04: `mika_log_medication` and `mika_log_temperature` (need Alfred 0.9.0, Alfred PR #17, which adds `alfred.huckleberry_log_medication` / `huckleberry_list_medications` / `huckleberry_log_temperature` because the Huckleberry integration has no medicine or temperature action; unknown medicines are refused unless confirmed as new), plus `mika_log_growth` (kg/cm) and `mika_log_pump` (ml + minutes). Live timers `mika_bath` and `mika_tummy_time` (start/stop/pause/resume/cancel) need Alfred 0.10.0 (PR #18, `alfred.huckleberry_activity_timer`); `mika_log_activity` still logs a finished one. Huckleberry is now v0.5.9. Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (often unreachable).
 
@@ -128,8 +162,8 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Wake up call | `automation.wake_up_call` | off | |
 | Garage Light Activate | `automation.garage_light_activate` | on | Garage light 05:00–09:00 on weekdays |
 | Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
-| Garage Door Open/Close | `automation.new_automation_2` | on | Wall switch pulses the door; ignores unavailable/unknown (no opening on restarts) and has a loop guard |
-| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch ("Open Switch", gang 3) in step with the door |
+| Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes (no door-state check). Ignores unavailable/unknown (no opening on restarts) and switch changes made by an automation, so the sync below never moves the door. 5-second lockout after each command: wait ~5 s between presses |
+| Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch (gang 3) in step with the door. Re-checks on door change, HA start, switch or door coming back online, and every 2 minutes; only acts when they disagree and the switch wasn't pressed in the last 90 s (updated 2026-11-08) |
 | Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
 | Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
 | Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | on | See below |
@@ -137,24 +171,44 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Guest Bedroom bulb auto power cycle | `automation.guest_bedroom_bulb_auto_power_cycle` | on | See below |
 | Tania's Office bulb auto power cycle | `automation.tania_s_office_bulb_auto_power_cycle` | on | See below |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
+| Water Tank: store reading after measuring window | `automation.water_tank_store_reading_after_measuring_window` | on | At 05:30, 07:30, 19:30 and 22:30 saves the 30-min median level into `input_number.water_tank_level` (ignores 0% unless already ≤10%) |
+| Water Tank: low level alert with fill option | `automation.water_tank_low_level_alert_with_fill_option` | on | After each stored reading below 20%, asks on the JDK phone to fill; Yes runs Rain Bird "Municipal Tank Input" for 30 min |
+| Jacques onthou: huis toe vir rugby | `automation.jacques_onthou_huis_toe_vir_rugby` | on | One-off reminder made by Alfred: 12:30 on 2026-11-07, phone notification if Jacques isn't home (rugby). Expired; safe to delete |
 
-**Bulb auto power cycle:** when the room's wall switch turns on, wait 2 minutes; if its bulbs are still
-unavailable, notify the JDK phone and power-cycle the switch once. The Great Room switch feeds 23 bulbs,
+**Bulb auto power cycle:** when the room's wall switch turns on, watch its bulbs for up to 5 minutes and stop as
+soon as all connect. Only if a bulb is still unavailable after 5 minutes **and the switch stayed on the whole
+time** does it notify the JDK phone and power-cycle the switch once (10 s off), then wait 10 minutes. It never
+turns on a switch the user turned off (reworked 2026-10-20 after it toggled lights needlessly with a 2-minute check). The Great Room switch feeds 23 bulbs,
 including the kitchen pendants. Added after a second outage on 2026-10-18 (~10:15) where bulbs refused
 connections (error 901) with no IP change until their power was cycled. Avoid using the Smart Life app on the
 home Wi-Fi, which can lock bulbs out of local connections.
 
 **Updates:** Home Assistant does not auto-install Core/OS updates; the notification above asks first.
 
-No scripts.
+Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs); `script.netflix_living_room`,
+`script.dstv_stream_living_room`, `script.dstv_sport_living_room` (open those apps on the living room TV, seen 2026-11-07);
+19 `script.mika_*` Huckleberry voice-logging scripts (section 5).
 
 ## 7. Open items
 
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
-- Reserve IPs in the Deco for all Tuya devices.
 - TVs can't be turned on from HA (see section 5).
+- Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
+  the 2-minute re-sync above should stop that. Confirm the next press works (user).
+- Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
+- Alfred re-pairing (PR #25): waiting on Jacques to merge it, create a Tuya developer cloud project (platform.tuya.com,
+  linked to Smart Life) and type its Access ID/Secret plus Wi-Fi details into Alfred's settings (not in chat or this doc);
+  then Claude tests on Kitchen DL1. All 8 wall switches already remember their last state (checked 2026-11-07).
+- Alfred app PR #17 ("look" tool: TV screenshots and camera snapshots) ready to merge; seeing the TV needs the
+  Android Debug Bridge integration set up on the living room TV (user step).
+- Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
+- Mika: the 12 `script.mika_*` voice scripts are now exposed to Assist (seen 2026-11-04; `mika_breastfeed_stop_side` stays hidden).
+  Alfred 0.10.1 (PRs #17–#19) is installed and HA restarted (2026-11-04). Still to do: expose the 6 new scripts (medication, temperature, growth, pumping, bath timer, tummy time timer) and `sensor.mika_medication`, then test (user step).
+- Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
+  bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
+  or Zigbee/dumb bulbs). That thread was closed on 2026-11-08 without a choice; the watchdog now covers most bulb drop-outs.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
-  waiting on the user in the "Remote card update and live typing" thread. Optional restyle of both remotes offered.
+  that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
 - Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
 - `configuration.yaml` still references `samsungtv_tizen` (not installed) with placeholder host/MAC.
 - NAS password moved to `secrets.yaml` (config PR #2), but it is still in git history: change the NAS password.
@@ -167,6 +221,20 @@ No scripts.
 
 ## 8. Change log
 
+- 2026-11-09: Garage Switch Follows Door now re-syncs every 2 min and on reconnect; garage switch back online; bulb and remote threads closed.
+- 2026-11-08: New one-off automation "Jacques onthou: huis toe vir rugby" (7 Nov reminder, now expired) noted.
+- 2026-11-07: Alfred 0.12.2 (Smart Life settings tools, watchdog fixes); re-pairing PR #25 and app look tool open; living room TV app scripts; Main Bedroom bulbs fixed (removed from open items); standing rules added.
+- 2026-11-06 (later): Alfred 0.12.0 (PR #22) adds a **watchdog**: every 5 min, entities unavailable 10+ min get their integration reloaded (back-off 10m→6h, max 5 per check); Tuya Local devices that don't announce (no power) are skipped; it learns which wall switch powers which bulb and ignores bulbs while their switch is off; notifies after 3 failed tries; stops reloading integrations reloads never fix. Tools: get_watchdog_status, set_watchdog_ignore, set_watchdog_feed. TVs/phones ignored by default. Data in `.storage/alfred.watchdog`.
+- 2026-11-06: Main Bedroom DL 1–5 were unavailable since the HA 2026.11.0 update (bulbs refused the saved local key, tinytuya 914). Alfred 0.11.0/0.11.1 (PRs #20, #21) now copies fresh local keys from the Tuya cloud integration into Tuya Local automatically (5-min check) and via `update_tuya_local_device refresh_local_key`. Bedroom bulbs fixed. All Tuya IPs are reserved in the Deco (confirmed by Jacques).
+- 2026-11-06: HA 2026.11.0; standalone Alfred app (`JacDK777/Alfred_App`, updater, voices) documented; Main Bedroom bulbs offline added to open items.
+- 2026-11-04: Voice logging for medication, temperature, growth and pumping (4 new Mika scripts; Alfred PR #17 for medication/temperature), plus bath and tummy time timers (Alfred PR #18); Alfred 0.10.1 installed (PR #19 fixed device-registry deprecation warnings). Alfred can now restart HA itself via call_action.
+- 2026-11-04: Mika voice scripts confirmed exposed to Assist; open item narrowed to sensors and a test log.
+- 2026-10-31: Two new water tank automations (stored readings in quiet windows; low-level alert with a 30-minute municipal fill option).
+- 2026-10-27: Alfred 0.8.0 (scenes, delete, call_action) and butler icon; garage wall switch offline; standalone Alfred app planned.
+- 2026-10-26: Garage fixed after the door closed itself again: switch on opens, off closes, automation-made switch changes are ignored, 5-second lockout, and Switch Follows Door is back on (confirmed working); Mika breastfeeding voice scripts added, bottles are breast milk.
+- 2026-10-25: Huckleberry integration (v0.5.5), Mika dashboard and six Mika voice-logging scripts for Alfred added.
+- 2026-10-23: Garage Door Open/Close fixed (it sent open then close, so the door stopped partway after the move to Tuya Local).
+- 2026-10-21: Bulb power cycle automations reworked (5-minute watch, never re-enable a switch turned off); bulb root-cause options added; scripts listed.
 - 2026-10-19: Alfred 0.7.0 (HACS and dashboard resource tools); Universal Remote Card 4.12.1 with live keyboard; Android TV Remote for both TVs; open remote issues and load-shedding area noted.
 - 2026-10-18 (11:15): Ginny and all automations on Tuya Local; Tuya cloud mostly disabled; garage switch follows door; 4 bulb auto-power-cycle automations; update-available notification.
 - 2026-10-18 (later): Alfred 0.6.0 (dashboard, rename and Tuya Local tools, auto IP follow); Main Dash fully on Tuya Local; 28 bulbs reconnected after IP changes; Tania office names.
