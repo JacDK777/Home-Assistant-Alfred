@@ -80,8 +80,10 @@ Assistant**, also select **Alfred admin**. Alfred can then:
 - run any Home Assistant action that the everyday Assist tools can't, such as setting
   a helper, playing media or fetching a weather forecast. Alfred asks first before
   anything risky, like locks, the garage door or a restart.
-- list, read and edit dashboards that are managed in the UI ("Put the kitchen lights on
-  the Main Dash"). The version before each change is kept, so Alfred can undo it.
+- create, rename and delete dashboards, change their icon and sidebar settings, and
+  read and edit their views and cards, just like Settings > Dashboards ("Make a House
+  Stats dashboard with the gas level", "Put the kitchen lights on the Main Dash"). The
+  version before each change is kept, so Alfred can undo it.
 - look up entities with the integration and device they come from ("Which entities
   come from Tuya Local?")
 - rename entities and devices without changing their entity ids, so automations and

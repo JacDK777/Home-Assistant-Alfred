@@ -1,7 +1,8 @@
 """Alfred admin: an opt-in LLM API for looking after Home Assistant itself.
 
 Its tools read the error log, create, edit and delete UI-managed automations,
-scripts and scenes, run any Home Assistant action, edit dashboards,
+scripts and scenes, run any Home Assistant action, create, edit and delete
+dashboards,
 look up and rename entities and devices, download and update HACS repositories,
 manage dashboard resources, check and fix Tuya Local connections and file GitHub
 issues.
@@ -511,8 +512,9 @@ class ListDashboardsTool(AdminTool):
 
     name = "list_dashboards"
     description = (
-        "List all dashboards with their url_path, title and mode. Use the url_path "
-        "with get_dashboard and save_dashboard."
+        "List all dashboards with their url_path, title, mode, icon and sidebar "
+        "settings. Use the url_path with get_dashboard, save_dashboard, "
+        "update_dashboard and delete_dashboard."
     )
 
     async def _async_run(
@@ -524,6 +526,9 @@ class ListDashboardsTool(AdminTool):
                     "url_path": key or DEFAULT_DASHBOARD,
                     "title": (dash.config or {}).get("title", "Overview"),
                     "mode": dash.mode,
+                    "icon": (dash.config or {}).get("icon"),
+                    "show_in_sidebar": (dash.config or {}).get("show_in_sidebar", True),
+                    "require_admin": (dash.config or {}).get("require_admin", False),
                 }
                 for key, dash in _dashboards(hass).items()
             ]
@@ -550,12 +555,12 @@ class GetDashboardTool(AdminTool):
     ) -> JsonObjectType:
         from homeassistant.components.lovelace.const import ConfigNotFound
 
-        dashboard = _dashboard(hass, args["url_path"])
         if args["previous"]:
             backup = await _backup_store(hass, args["url_path"]).async_load()
             if backup is None:
                 raise HomeAssistantError("Alfred has not changed this dashboard yet")
             return {"config": backup}
+        dashboard = _dashboard(hass, args["url_path"])
         try:
             config = await dashboard.async_load(False)
         except ConfigNotFound:
@@ -602,6 +607,154 @@ class SaveDashboardTool(AdminTool):
         if previous is not None:
             await _backup_store(hass, args["url_path"]).async_save(previous)
         await dashboard.async_save(args["config"])
+        return {"success": True, "url_path": args["url_path"]}
+
+
+def _dashboards_collection(hass: HomeAssistant) -> Any:
+    """Return the collection behind Settings > Dashboards.
+
+    Home Assistant does not keep it in hass.data, but the websocket command that
+    lists dashboards is a method of the object that owns it.
+    """
+    from homeassistant.components.websocket_api import DOMAIN as WS_DOMAIN
+
+    _dashboards(hass)  # raises when lovelace is not loaded
+    handler = hass.data.get(WS_DOMAIN, {}).get("lovelace/dashboards/list", (None,))[0]
+    collection = getattr(getattr(handler, "__self__", None), "storage_collection", None)
+    if collection is None:
+        raise HomeAssistantError("Dashboards can't be managed on this Home Assistant")
+    return collection
+
+
+def _dashboard_item_id(hass: HomeAssistant, collection: Any, url_path: str) -> str:
+    """Return the collection id of a UI-managed dashboard, by url_path."""
+    for item_id, item in collection.data.items():
+        if item.get("url_path") == url_path:
+            return item_id
+    if url_path in _dashboards(hass):
+        raise HomeAssistantError(
+            f"{url_path} is defined in YAML or built in, so it can't be changed here"
+        )
+    raise HomeAssistantError(
+        f"No dashboard with url_path {url_path}. Use list_dashboards."
+    )
+
+
+def _dashboard_settings(args: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: args[key]
+        for key in ("title", "icon", "show_in_sidebar", "require_admin")
+        if key in args
+    }
+
+
+class CreateDashboardTool(AdminTool):
+    """Add a new dashboard, as Settings > Dashboards > Add dashboard does."""
+
+    name = "create_dashboard"
+    description = (
+        "Create a new UI-managed dashboard, shown in the sidebar. url_path is the "
+        "web address and must contain a hyphen, for example house-stats; it is made "
+        "from the title when left out. Optionally pass config (views and cards, as "
+        "for save_dashboard) to fill it straight away. Only call after the user has "
+        "confirmed the change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("title"): cv.string,
+            vol.Optional("url_path"): cv.string,
+            vol.Optional("icon"): cv.icon,
+            vol.Optional("show_in_sidebar", default=True): cv.boolean,
+            vol.Optional("require_admin", default=False): cv.boolean,
+            vol.Optional("config"): vol.Schema(
+                {vol.Required("views"): list}, extra=True
+            ),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        from homeassistant.util import slugify
+
+        collection = _dashboards_collection(hass)
+        url_path = args.get("url_path") or slugify(args["title"], separator="-")
+        if "-" not in url_path:
+            url_path = f"{url_path}-dashboard"
+        if url_path in _dashboards(hass):
+            raise HomeAssistantError(
+                f"A dashboard with url_path {url_path} already exists"
+            )
+        try:
+            await collection.async_create_item(
+                {"url_path": url_path, "mode": "storage", **_dashboard_settings(args)}
+            )
+        except vol.Invalid as err:
+            raise HomeAssistantError(f"Can't create the dashboard: {err}") from err
+        if "config" in args:
+            await _dashboard(hass, url_path).async_save(args["config"])
+        return {"success": True, "url_path": url_path}
+
+
+class UpdateDashboardTool(AdminTool):
+    """Change a dashboard's title, icon or sidebar settings."""
+
+    name = "update_dashboard"
+    description = (
+        "Change a UI-managed dashboard's title (its name in the sidebar), icon "
+        "(for example mdi:chart-bar), whether it shows in the sidebar, and whether "
+        "only administrators can open it. Its views and cards are changed with "
+        "save_dashboard. The url_path stays the same. Only call after the user has "
+        "confirmed the change."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("url_path"): cv.string,
+            vol.Optional("title"): cv.string,
+            vol.Optional("icon"): vol.Any(cv.icon, None),
+            vol.Optional("show_in_sidebar"): cv.boolean,
+            vol.Optional("require_admin"): cv.boolean,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        collection = _dashboards_collection(hass)
+        item_id = _dashboard_item_id(hass, collection, args["url_path"])
+        changes = _dashboard_settings(args)
+        if not changes:
+            raise HomeAssistantError("Nothing to change")
+        item = await collection.async_update_item(item_id, changes)
+        return {"success": True, "dashboard": dict(item)}
+
+
+class DeleteDashboardTool(AdminTool):
+    """Delete a dashboard, keeping a copy of its cards."""
+
+    name = "delete_dashboard"
+    description = (
+        "Delete a UI-managed dashboard by url_path. A copy of its views and cards is "
+        "kept and can be read with get_dashboard previous=true after creating a "
+        "dashboard with the same url_path. Only call after the user has confirmed "
+        "the change."
+    )
+    parameters = vol.Schema({vol.Required("url_path"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        from homeassistant.components.lovelace.const import ConfigNotFound
+
+        collection = _dashboards_collection(hass)
+        item_id = _dashboard_item_id(hass, collection, args["url_path"])
+        try:
+            config = await _dashboard(hass, args["url_path"]).async_load(False)
+        except ConfigNotFound:
+            config = None
+        if config is not None:
+            await _backup_store(hass, args["url_path"]).async_save(config)
+        await collection.async_delete_item(item_id)
         return {"success": True, "url_path": args["url_path"]}
 
 
@@ -1512,6 +1665,9 @@ class AlfredAdminAPI(llm.API):
             ListDashboardsTool(),
             GetDashboardTool(),
             SaveDashboardTool(),
+            CreateDashboardTool(),
+            UpdateDashboardTool(),
+            DeleteDashboardTool(),
             FindEntitiesTool(),
             RenameEntityTool(),
             SetEntityEnabledTool(),

@@ -95,6 +95,9 @@ async def test_admin_tools_only_for_admins(
         "list_dashboards",
         "get_dashboard",
         "save_dashboard",
+        "create_dashboard",
+        "update_dashboard",
+        "delete_dashboard",
         "find_entities",
         "rename_entity",
         "set_entity_enabled",
@@ -254,9 +257,14 @@ async def test_edit_dashboard(
     api = await _api(hass, hass_admin_user)
 
     result = await _call(api, "list_dashboards")
-    assert {"url_path": "main-dash", "title": "Main Dash", "mode": "storage"} in (
-        result["dashboards"]
-    )
+    assert {
+        "url_path": "main-dash",
+        "title": "Main Dash",
+        "mode": "storage",
+        "icon": None,
+        "show_in_sidebar": True,
+        "require_admin": False,
+    } in result["dashboards"]
     assert (await _call(api, "get_dashboard", url_path="main-dash"))["config"] == old
 
     with pytest.raises(HomeAssistantError, match="generated automatically"):
@@ -275,6 +283,58 @@ async def test_edit_dashboard(
 
     with pytest.raises(vol.Invalid):
         await _call(api, "save_dashboard", url_path="main-dash", config={"cards": []})
+
+
+async def test_create_update_delete_dashboard(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Dashboards are created with cards, renamed and deleted like in the UI."""
+    assert await async_setup_component(hass, "lovelace", {})
+    api = await _api(hass, hass_admin_user)
+    views = {"views": [{"title": "Gas", "cards": [{"type": "tile", "entity": "x.y"}]}]}
+
+    result = await _call(
+        api, "create_dashboard", title="House Stats", icon="mdi:chart-bar", config=views
+    )
+    assert result == {"success": True, "url_path": "house-stats"}
+    assert hass.data["frontend_panels"]["house-stats"].sidebar_title == "House Stats"
+    assert (await _call(api, "get_dashboard", url_path="house-stats"))[
+        "config"
+    ] == views
+    listed = (await _call(api, "list_dashboards"))["dashboards"]
+    assert {
+        "url_path": "house-stats",
+        "title": "House Stats",
+        "mode": "storage",
+        "icon": "mdi:chart-bar",
+        "show_in_sidebar": True,
+        "require_admin": False,
+    } in listed
+
+    result = await _call(api, "create_dashboard", title="Energy")
+    assert result["url_path"] == "energy-dashboard"
+    with pytest.raises(HomeAssistantError, match="already exists"):
+        await _call(api, "create_dashboard", title="House Stats")
+
+    result = await _call(
+        api, "update_dashboard", url_path="house-stats", title="Consumption Stats"
+    )
+    assert result["dashboard"]["title"] == "Consumption Stats"
+    assert (
+        hass.data["frontend_panels"]["house-stats"].sidebar_title == "Consumption Stats"
+    )
+    with pytest.raises(HomeAssistantError, match="Nothing to change"):
+        await _call(api, "update_dashboard", url_path="house-stats")
+    with pytest.raises(HomeAssistantError, match="No dashboard"):
+        await _call(api, "update_dashboard", url_path="missing", title="X")
+
+    result = await _call(api, "delete_dashboard", url_path="house-stats")
+    assert result == {"success": True, "url_path": "house-stats"}
+    assert "house-stats" not in hass.data["frontend_panels"]
+    with pytest.raises(HomeAssistantError, match="No dashboard"):
+        await _call(api, "get_dashboard", url_path="house-stats")
+    previous = await _call(api, "get_dashboard", url_path="house-stats", previous=True)
+    assert previous["config"] == views
 
 
 async def test_find_entities(
