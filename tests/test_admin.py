@@ -1,6 +1,7 @@
 """Tests for the Alfred admin LLM API."""
 
 import logging
+import sys
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -105,6 +106,8 @@ async def test_admin_tools_only_for_admins(
         "rename_device",
         "list_hacs_repositories",
         "download_hacs_repository",
+        "add_hacs_custom_repository",
+        "list_bluetooth_devices",
         "list_dashboard_resources",
         "remove_dashboard_resource",
         "check_tuya_local_devices",
@@ -892,6 +895,141 @@ async def test_marketplace_repositories(
     card.async_install_repository.assert_awaited_once_with(ref=None)
     card.async_download_repository.assert_not_awaited()
     assert installed == [card]
+
+
+async def test_add_custom_repository(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """A repository outside the default list is added to the Marketplace."""
+    api = await _api(hass, hass_admin_user)
+    bj_led = _hacs_repository("777", "8none1/bj_led", "integration", None, "0.0.2")
+    listed: dict[str, Any] = {}
+    marketplace = MagicMock()
+    marketplace.warning_acceptances = {"user": "2026-11-10"}
+    marketplace.common.categories = {"integration", "plugin"}
+    marketplace.common.renamed_repositories = {}
+    marketplace.common.skip = {"8none1/bj_led"}
+    marketplace.repositories.get_by_full_name = listed.get
+    marketplace.data.async_write = AsyncMock()
+
+    async def _register(repository_full_name: str, category: str) -> None:
+        listed[repository_full_name] = bj_led
+
+    marketplace.async_register_repository = AsyncMock(side_effect=_register)
+    entry = MagicMock()
+    entry.runtime_data = marketplace
+    loaded_entries = hass.config_entries.async_loaded_entries
+    with patch.object(
+        hass.config_entries,
+        "async_loaded_entries",
+        side_effect=lambda domain: (
+            [entry] if domain == "marketplace" else loaded_entries(domain)
+        ),
+    ):
+        with pytest.raises(HomeAssistantError, match="owner/name"):
+            await _call(
+                api,
+                "add_hacs_custom_repository",
+                repository="bj_led",
+                category="integration",
+            )
+        with pytest.raises(HomeAssistantError, match="theme category"):
+            await _call(
+                api,
+                "add_hacs_custom_repository",
+                repository="a/b",
+                category="theme",
+            )
+        result = await _call(
+            api,
+            "add_hacs_custom_repository",
+            repository="https://github.com/8none1/bj_led.git",
+            category="integration",
+        )
+        assert result["success"] is True
+        assert result["already_listed"] is False
+        assert result["repository_id"] == "777"
+        marketplace.async_register_repository.assert_awaited_once_with(
+            repository_full_name="8none1/bj_led", category="integration"
+        )
+        assert marketplace.common.skip == set()
+        marketplace.data.async_write.assert_awaited_once()
+
+        result = await _call(
+            api,
+            "add_hacs_custom_repository",
+            repository="8none1/bj_led",
+            category="integration",
+        )
+        assert result["already_listed"] is True
+        assert marketplace.async_register_repository.await_count == 1
+
+        marketplace.async_register_repository.side_effect = None
+        marketplace.async_register_repository.return_value = ["no manifest"]
+        with pytest.raises(HomeAssistantError, match="no manifest"):
+            await _call(
+                api,
+                "add_hacs_custom_repository",
+                repository="x/y",
+                category="integration",
+            )
+
+
+async def test_list_bluetooth_devices(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """Bluetooth devices are listed strongest first, with waiting discoveries."""
+    api = await _api(hass, hass_admin_user)
+    with pytest.raises(HomeAssistantError, match="Bluetooth integration"):
+        await _call(api, "list_bluetooth_devices")
+
+    def _info(name: str, address: str, rssi: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            name=name,
+            address=address,
+            rssi=rssi,
+            source="C8:8A:7B:A9:6E:1E",
+            connectable=True,
+            service_uuids=["0000ffe0-0000-1000-8000-00805f9b34fb"],
+            manufacturer_data={},
+        )
+
+    infos = [
+        _info("Phone", "AA:BB:CC:DD:EE:FF", -90),
+        _info("BJ_LED", "FF:FF:10:20:30:40", -60),
+    ]
+    scanner = SimpleNamespace(source="C8:8A:7B:A9:6E:1E", name="esp32 proxy")
+    flows = [
+        {
+            "handler": "bj_led",
+            "context": {"source": "bluetooth", "unique_id": "ff:ff:10:20:30:40"},
+        },
+        {"handler": "hue", "context": {"source": "zeroconf", "unique_id": "x"}},
+    ]
+    # A stand-in, so the test needs none of the Bluetooth libraries
+    bluetooth = SimpleNamespace(
+        async_discovered_service_info=MagicMock(return_value=infos),
+        async_current_scanners=MagicMock(return_value=[scanner]),
+    )
+    hass.config.components.add("bluetooth")
+    with (
+        patch.dict(sys.modules, {"homeassistant.components.bluetooth": bluetooth}),
+        patch.object(hass.config_entries.flow, "async_progress", return_value=flows),
+    ):
+        result = await _call(api, "list_bluetooth_devices")
+        assert result["count"] == 2
+        assert result["scanners"] == ["esp32 proxy"]
+        led = result["devices"][0]
+        assert led["name"] == "BJ_LED"
+        assert led["heard_by"] == "esp32 proxy"
+        assert led["discovered_integrations"] == ["bj_led"]
+        assert result["devices"][1]["discovered_integrations"] == []
+        bluetooth.async_discovered_service_info.assert_called_with(
+            hass, connectable=False
+        )
+
+        result = await _call(api, "list_bluetooth_devices", search="bj_")
+        assert [d["address"] for d in result["devices"]] == ["FF:FF:10:20:30:40"]
 
 
 async def test_dashboard_resources(

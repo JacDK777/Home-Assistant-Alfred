@@ -4,6 +4,7 @@
   "after_dependencies": [
     "assist_pipeline",
     "automation",
+    "bluetooth",
     "config",
     "intent",
     "lovelace",
