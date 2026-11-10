@@ -3,7 +3,8 @@
 Its tools read the error log, create, edit and delete UI-managed automations,
 scripts and scenes, run any Home Assistant action, create, edit and delete
 dashboards,
-look up and rename entities and devices, download and update HACS repositories,
+look up and rename entities and devices, add, download and update Marketplace
+(HACS) repositories, list the Bluetooth devices Home Assistant hears,
 manage dashboard resources, check and fix Tuya Local connections and file GitHub
 issues.
 They are only offered to Home Assistant administrators.
@@ -12,6 +13,7 @@ They are only offered to Home Assistant administrators.
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import Any
 import uuid
 
@@ -1062,6 +1064,151 @@ class DownloadHacsRepositoryTool(AdminTool):
         }
 
 
+_GITHUB_REPOSITORY = re.compile(
+    r"^(?:https?://)?(?:www\.)?(?:github\.com/)?"
+    r"(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$"
+)
+
+
+class AddHacsCustomRepositoryTool(AdminTool):
+    """Add a GitHub repository to the Marketplace (HACS) as a custom repository."""
+
+    name = "add_hacs_custom_repository"
+    description = (
+        "Add a GitHub repository that is not in the Marketplace's default list "
+        "(formerly a HACS custom repository), such as an integration a README says "
+        "to add as a custom repository. Give owner/name or the GitHub URL and its "
+        "category. It only adds it to the list, nothing is downloaded: then use "
+        "download_hacs_repository with the repository_id it returns. Only call after "
+        "the user has confirmed the exact repository."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("repository"): cv.string,
+            vol.Required("category"): vol.In(
+                ["integration", "plugin", "theme", "template", "python_script"]
+            ),
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        kind, store = _store(hass)
+        match = _GITHUB_REPOSITORY.match(args["repository"].strip())
+        if match is None:
+            raise HomeAssistantError(
+                "Give the repository as owner/name or its GitHub URL"
+            )
+        full_name = match["repository"]
+        category = args["category"]
+        if kind == MARKETPLACE and not store.warning_acceptances:
+            raise HomeAssistantError(
+                "The Marketplace's community-code warning has not been accepted "
+                "yet. Open Settings > Marketplace once and accept it first."
+            )
+        if category not in store.common.categories:
+            raise HomeAssistantError(
+                f"The {category} category is not turned on in the Marketplace"
+            )
+        renamed = store.common.renamed_repositories.get(full_name)
+        if renamed:
+            full_name = renamed
+        existing = store.repositories.get_by_full_name(full_name)
+        if existing is not None:
+            return {
+                "success": True,
+                "already_listed": True,
+                **_hacs_repository_info(existing),
+            }
+        store.common.skip.discard(full_name)
+        try:
+            errors = await store.async_register_repository(
+                repository_full_name=full_name, category=category
+            )
+        except Exception as err:  # noqa: BLE001 - the stores raise their own types
+            raise HomeAssistantError(f"Could not add it: {err}") from err
+        if errors:
+            raise HomeAssistantError(f"Could not add it: {errors[0]}")
+        repository = store.repositories.get_by_full_name(full_name)
+        if repository is None:
+            raise HomeAssistantError(
+                f"{full_name} was not added. Check the Home Assistant log."
+            )
+        await store.data.async_write()
+        return {
+            "success": True,
+            "already_listed": False,
+            **_hacs_repository_info(repository),
+            "next_step": "download_hacs_repository with this repository_id",
+        }
+
+
+MAX_BLUETOOTH_RESULTS = 50
+
+
+class ListBluetoothDevicesTool(AdminTool):
+    """List the Bluetooth devices Home Assistant hears right now."""
+
+    name = "list_bluetooth_devices"
+    description = (
+        "List the Bluetooth (BLE) devices Home Assistant currently hears through "
+        "its adapters and ESPHome Bluetooth proxies: name, MAC address, signal "
+        "strength (rssi, closer to 0 is stronger), which adapter or proxy hears it "
+        "best, whether it accepts connections, and any discovered integration "
+        "waiting to be set up for it. Use it to find a Bluetooth light or sensor "
+        "and work out which integration it needs. Search matches name or address."
+    )
+    parameters = vol.Schema({vol.Optional("search"): cv.string})
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        if "bluetooth" not in hass.config.components:
+            raise HomeAssistantError("The Bluetooth integration is not set up")
+        from homeassistant.components import bluetooth
+
+        search = (args.get("search") or "").lower()
+        scanners = {
+            scanner.source: scanner.name
+            for scanner in bluetooth.async_current_scanners(hass)
+        }
+        discovered: dict[str, list[str]] = {}
+        for flow in hass.config_entries.flow.async_progress():
+            if flow.get("context", {}).get("source") != "bluetooth":
+                continue
+            unique_id = str(flow["context"].get("unique_id") or "").upper()
+            discovered.setdefault(unique_id, []).append(flow["handler"])
+        found = []
+        for info in bluetooth.async_discovered_service_info(hass, connectable=False):
+            name = info.name or ""
+            if (
+                search
+                and search not in name.lower()
+                and search not in (info.address.lower())
+            ):
+                continue
+            found.append(
+                {
+                    "name": name,
+                    "address": info.address,
+                    "rssi": info.rssi,
+                    "heard_by": scanners.get(info.source, info.source),
+                    "connectable": info.connectable,
+                    "service_uuids": list(info.service_uuids),
+                    "manufacturer_ids": sorted(info.manufacturer_data),
+                    "discovered_integrations": discovered.get(info.address.upper(), []),
+                }
+            )
+        found.sort(key=lambda d: d["rssi"] or -999, reverse=True)
+        return {
+            "count": len(found),
+            "scanners": sorted(scanners.values()),
+            "devices": found[:MAX_BLUETOOTH_RESULTS],
+            "truncated": len(found) > MAX_BLUETOOTH_RESULTS,
+        }
+
+
 async def _async_resources(hass: HomeAssistant) -> Any:
     """Return the UI-managed dashboard resources collection, loaded."""
     from homeassistant.components.lovelace.const import LOVELACE_DATA
@@ -1702,6 +1849,8 @@ class AlfredAdminAPI(llm.API):
             RenameDeviceTool(),
             ListHacsRepositoriesTool(),
             DownloadHacsRepositoryTool(),
+            AddHacsCustomRepositoryTool(),
+            ListBluetoothDevicesTool(),
             ListDashboardResourcesTool(),
             RemoveDashboardResourceTool(),
             CheckTuyaLocalDevicesTool(),

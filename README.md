@@ -94,7 +94,12 @@ Assistant**, also select **Alfred admin**. Alfred can then:
   resources that make a custom card show a configuration error ("Update the remote card").
   This downloads code from GitHub, so Alfred names the repository and version and waits
   for your yes first. Integrations need a restart afterwards. The Marketplace's
-  community-code warning has to be accepted once in Settings > Marketplace.
+  community-code warning has to be accepted once in Settings > Marketplace. Alfred can
+  also add a repository that isn't in the Marketplace's default list (a "custom
+  repository"), again only after your yes.
+- list the Bluetooth devices Home Assistant hears through its adapters and ESPHome
+  Bluetooth proxies, with signal strength and any integration waiting to be set up for
+  them ("Can Home Assistant see my Bluetooth LED strip?")
 - check which Tuya Local devices can't connect, compare the IP address saved for each
   one with the address it announces on your network, and update the IP address or
   protocol version ("Why are my Tuya Local bulbs unavailable?")
