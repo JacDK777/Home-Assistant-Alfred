@@ -19,6 +19,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.setup import async_setup_component
 
 from custom_components.alfred.admin import ADMIN_API_ID, async_follow_tuya_local_ips
@@ -785,7 +786,7 @@ async def test_hacs_repositories(
 ) -> None:
     """HACS repositories are listed, searched, downloaded and updated."""
     api = await _api(hass, hass_admin_user)
-    with pytest.raises(HomeAssistantError, match="HACS is not installed"):
+    with pytest.raises(HomeAssistantError, match="Neither the Marketplace nor HACS"):
         await _call(api, "list_hacs_repositories")
 
     remote = _hacs_repository(
@@ -836,8 +837,60 @@ async def test_hacs_repositories(
     mushroom.async_download_repository.side_effect = Exception("rate limited")
     with pytest.raises(HomeAssistantError, match="rate limited"):
         await _call(api, "download_hacs_repository", repository_id="444350375")
-    with pytest.raises(HomeAssistantError, match="No HACS repository"):
+    with pytest.raises(HomeAssistantError, match="No repository"):
         await _call(api, "download_hacs_repository", repository_id="1")
+
+
+async def test_marketplace_repositories(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser
+) -> None:
+    """The built-in Marketplace (HA 2026.11+) is used when it is set up."""
+    api = await _api(hass, hass_admin_user)
+    card = _hacs_repository(
+        "123", "slipx06/sunsynk-power-flow-card", "plugin", None, "7.0.0"
+    )
+
+    async def _install(ref: str | None = None) -> None:
+        card.data.installed = True
+        card.display_installed_version = ref or "7.0.0"
+
+    card.async_install_repository = AsyncMock(side_effect=_install)
+    marketplace = MagicMock()
+    marketplace.repositories.list_all = [card]
+    marketplace.repositories.get_by_id = {"123": card}.get
+    marketplace.warning_acceptances = {}
+    hass.data["hacs"] = MagicMock()  # an old HACS must not be preferred
+    entry = MagicMock()
+    entry.runtime_data = marketplace
+    installed: list = []
+    async_dispatcher_connect(hass, "marketplace_repository_installed", installed.append)
+
+    loaded_entries = hass.config_entries.async_loaded_entries
+    with patch.object(
+        hass.config_entries,
+        "async_loaded_entries",
+        side_effect=lambda domain: (
+            [entry] if domain == "marketplace" else loaded_entries(domain)
+        ),
+    ):
+        result = await _call(api, "list_hacs_repositories", search="sunsynk")
+        assert [r["repository_id"] for r in result["repositories"]] == ["123"]
+
+        with pytest.raises(HomeAssistantError, match="warning"):
+            await _call(api, "download_hacs_repository", repository_id="123")
+        card.async_install_repository.assert_not_awaited()
+
+        marketplace.warning_acceptances = {"user": "2026-11-10"}
+        result = await _call(api, "download_hacs_repository", repository_id="123")
+        await hass.async_block_till_done()
+
+    assert result["installed_version"] == "7.0.0"
+    assert result["previous_version"] is None
+    assert result["next_step"] == "Refresh the dashboard page in the browser or app"
+    card.update_repository.assert_awaited_once_with(ignore_issues=True, force=True)
+    card.async_install_repository.assert_awaited_once_with(ref=None)
+    card.async_download_repository.assert_not_awaited()
+    assert installed == [card]
 
 
 async def test_dashboard_resources(

@@ -29,6 +29,7 @@ from homeassistant.helpers import (
     llm,
     storage,
 )
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util.json import JsonObjectType
 
 from .const import (
@@ -916,13 +917,25 @@ class RenameDeviceTool(AdminTool):
 
 
 HACS = "hacs"
+MARKETPLACE = "marketplace"
+# Sent by the Marketplace after a first install so its update entities appear
+MARKETPLACE_SIGNAL_INSTALLED = "marketplace_repository_installed"
 MAX_HACS_RESULTS = 50
 
 
-def _hacs(hass: HomeAssistant) -> Any:
-    if (hacs := hass.data.get(HACS)) is None:
-        raise HomeAssistantError("HACS is not installed")
-    return hacs
+def _store(hass: HomeAssistant) -> tuple[str, Any]:
+    """Return the community store: the built-in Marketplace, or HACS before it.
+
+    Home Assistant 2026.11 took HACS into core as the Marketplace. Its manager
+    lives on the config entry and keeps the same repository objects as HACS.
+    """
+    if entries := hass.config_entries.async_loaded_entries(MARKETPLACE):
+        return MARKETPLACE, entries[0].runtime_data
+    if (hacs := hass.data.get(HACS)) is not None:
+        return HACS, hacs
+    raise HomeAssistantError(
+        "Neither the Marketplace nor HACS is set up in Home Assistant"
+    )
 
 
 def _hacs_repository_info(repository: Any) -> dict[str, Any]:
@@ -952,14 +965,15 @@ def _hacs_matches(repository: Any, search: str) -> bool:
 
 
 class ListHacsRepositoriesTool(AdminTool):
-    """List HACS repositories with their installed and newest versions."""
+    """List Marketplace (HACS) repositories with installed and newest versions."""
 
     name = "list_hacs_repositories"
     description = (
-        "List HACS repositories (dashboard cards, integrations, themes and so on) "
+        "List repositories in the Marketplace (Home Assistant's built-in community "
+        "store, formerly HACS): dashboard cards, integrations, themes and so on, "
         "with their repository_id, installed version and newest version. Without a "
         "search text it lists the downloaded ones; with one it searches every "
-        "repository HACS knows about by name, full name and description."
+        "repository the store knows about by name, full name and description."
     )
     parameters = vol.Schema({vol.Optional("search"): cv.string})
 
@@ -967,9 +981,10 @@ class ListHacsRepositoriesTool(AdminTool):
         self, hass: HomeAssistant, args: dict[str, Any]
     ) -> JsonObjectType:
         search = (args.get("search") or "").lower()
+        _, store = _store(hass)
         found = [
             _hacs_repository_info(repository)
-            for repository in _hacs(hass).repositories.list_all
+            for repository in store.repositories.list_all
             if _hacs_matches(repository, search)
         ]
         found.sort(key=lambda r: (not r["downloaded"], r["name"] or ""))
@@ -981,13 +996,14 @@ class ListHacsRepositoriesTool(AdminTool):
 
 
 class DownloadHacsRepositoryTool(AdminTool):
-    """Download or update a HACS repository."""
+    """Download or update a Marketplace (HACS) repository."""
 
     name = "download_hacs_repository"
     description = (
-        "Download a HACS repository by its repository_id from "
+        "Download a Marketplace (formerly HACS) repository by its repository_id from "
         "list_hacs_repositories, or update it if it is already downloaded. Gets the "
-        "newest version unless a version is given. HACS adds dashboard cards to the "
+        "newest version unless a version is given. The Marketplace adds dashboard "
+        "cards to the "
         "dashboard resources itself; they work once the page is refreshed. "
         "Integrations need a Home Assistant restart. This installs code from "
         "GitHub, so only call after the user has confirmed the exact repository "
@@ -1003,24 +1019,36 @@ class DownloadHacsRepositoryTool(AdminTool):
     async def _async_run(
         self, hass: HomeAssistant, args: dict[str, Any]
     ) -> JsonObjectType:
-        hacs = _hacs(hass)
-        repository = hacs.repositories.get_by_id(args["repository_id"])
+        kind, store = _store(hass)
+        repository = store.repositories.get_by_id(args["repository_id"])
         if repository is None:
             raise HomeAssistantError(
-                "No HACS repository with that repository_id. "
-                "Use list_hacs_repositories."
+                "No repository with that repository_id. Use list_hacs_repositories."
+            )
+        if kind == MARKETPLACE and not store.warning_acceptances:
+            raise HomeAssistantError(
+                "The Marketplace's community-code warning has not been accepted "
+                "yet. Open Settings > Marketplace once and accept it first."
             )
         was_downloaded = repository.data.installed
         previous_version = repository.display_installed_version
         try:
-            # Fetch the newest release information first, as HACS's refresh does.
+            # Fetch the newest release information first, as a refresh does.
             await repository.update_repository(ignore_issues=True, force=True)
-            await repository.async_download_repository(ref=args.get("version"))
-        except Exception as err:  # noqa: BLE001 - HACS raises its own exception types
-            raise HomeAssistantError(f"HACS could not download it: {err}") from err
-        if not was_downloaded:
-            await hacs.async_recreate_entities()
-        await hacs.data.async_write()
+            if kind == MARKETPLACE:
+                await repository.async_install_repository(ref=args.get("version"))
+            else:
+                await repository.async_download_repository(ref=args.get("version"))
+        except Exception as err:  # noqa: BLE001 - the stores raise their own types
+            raise HomeAssistantError(f"Could not download it: {err}") from err
+        if kind == MARKETPLACE:
+            # The install already saved the Marketplace's data
+            if not was_downloaded and repository.data.installed:
+                async_dispatcher_send(hass, MARKETPLACE_SIGNAL_INSTALLED, repository)
+        else:
+            if not was_downloaded:
+                await store.async_recreate_entities()
+            await store.data.async_write()
         info = _hacs_repository_info(repository)
         next_step = {
             "plugin": "Refresh the dashboard page in the browser or app",
