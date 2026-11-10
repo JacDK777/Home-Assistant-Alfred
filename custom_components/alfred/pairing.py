@@ -13,6 +13,7 @@ whose broadcast strategy came from https://github.com/tuyapi/link.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import hashlib
 import hmac
@@ -328,7 +329,10 @@ def pairing_run(hass: HomeAssistant) -> PairingRun:
 
 
 async def async_start_pairing(
-    hass: HomeAssistant, seconds: int, device_id: str | None
+    hass: HomeAssistant,
+    seconds: int,
+    device_id: str | None,
+    on_done: Callable[[PairingRun], None] | None = None,
 ) -> PairingRun:
     """Start sending EZ mode pairing packets in the background."""
     options = pairing_settings(hass)
@@ -346,7 +350,9 @@ async def async_start_pairing(
     run = PairingRun(running=True, started=time.time())
     hass.data[DATA_PAIRING] = run
     hass.async_create_background_task(
-        _async_pair(hass, api, run, options, token["token"], token_group, seconds),
+        _async_pair(
+            hass, api, run, options, token["token"], token_group, seconds, on_done
+        ),
         f"{DOMAIN} tuya pairing",
     )
     return run
@@ -360,6 +366,7 @@ async def _async_pair(
     token: str,
     token_group: str,
     seconds: int,
+    on_done: Callable[[PairingRun], None] | None = None,
 ) -> None:
     # Imported here: admin imports this module for its tools.
     from .admin import async_follow_tuya_local_ips
@@ -386,3 +393,5 @@ async def _async_pair(
     finally:
         run.running = False
         run.finished = time.time()
+        if on_done is not None:
+            on_done(run)

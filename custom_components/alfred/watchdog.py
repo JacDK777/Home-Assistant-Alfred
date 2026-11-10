@@ -11,6 +11,9 @@ bring that entry back:
   learns which switch powers which bulb (a bulb that drops out right after a
   switch turns off, and comes back right after it turns on, twice) and leaves a
   bulb alone while its switch is off. It can also be told.
+- A Tuya Local bulb that stays off the network while its wall switch is on has
+  probably fallen back into pairing mode. When Alfred has the Tuya and Wi-Fi
+  settings, the watchdog re-adds it (pairing.py), at most twice per outage.
 - Everything else is reloaded, with a growing pause between attempts.
 
 The watchdog remembers what it did. When an entry comes back after a repair the
@@ -104,6 +107,12 @@ SKIPPED_DOMAINS = DEFAULT_IGNORED_DOMAINS | DERIVED_DOMAINS
 
 TUYA_LOCAL = "tuya_local"
 ACTION_RELOAD = "reload"
+ACTION_PAIR = "re-pair"
+# Re-pairing a device in pairing mode: how long to send, how often to try.
+PAIR_SECONDS = 180
+MAX_PAIR_ATTEMPTS = 2
+PAIR_COOLDOWN = timedelta(hours=6)
+PAIR_NOTIFICATION_ID = f"{DOMAIN}_watchdog_pairing"
 
 STORAGE_KEY = f"{DOMAIN}.watchdog"
 STORAGE_VERSION = 1
@@ -135,6 +144,7 @@ class Watchdog:
         self.learned: dict[str, dict[str, int]] = {}
         # entity_id -> {switch entity_id: times seen}: which switch powers it.
         self.feeds: dict[str, dict[str, int]] = {}
+        self.last_pairing: str | None = None
         # switch entity_id -> (state it changed to, when), for recent changes.
         self._recent: dict[str, tuple[str, datetime]] = {}
 
@@ -160,6 +170,7 @@ class Watchdog:
             for entity_id, counts in data.get("feeds", {}).items()
             if entity_id.startswith("light.")
         }
+        self.last_pairing = data.get("last_pairing")
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -168,6 +179,7 @@ class Watchdog:
             "history": self.history[-HISTORY_LENGTH:],
             "learned": self.learned,
             "feeds": self.feeds,
+            "last_pairing": self.last_pairing,
         }
 
     def _save(self) -> None:
@@ -262,17 +274,41 @@ class Watchdog:
         state = self.hass.states.get(switch)
         return state is not None and state.state == STATE_OFF
 
-    def unavailable_by_entry(self) -> dict[str, list[str]]:
-        """Entities unavailable for longer than the grace period, by config entry."""
-        now = dt_util.utcnow()
+    def _device_feeds(self) -> dict[str, str]:
+        """Switch per device: a bulb's other entities share its power supply."""
         entities = er.async_get(self.hass)
-        found: dict[str, list[str]] = {}
-        # A bulb's other entities (scene, timer...) share its power supply.
         device_feeds: dict[str, str] = {}
         for entity_id in self.feeds:
             entity = entities.async_get(entity_id)
             if entity and entity.device_id and (switch := self.feed_of(entity_id)):
                 device_feeds[entity.device_id] = switch
+        return device_feeds
+
+    def powered_on(self, entity_ids: list[str]) -> bool:
+        """Whether a known wall switch has been powering these entities a while."""
+        entities = er.async_get(self.hass)
+        device_feeds = self._device_feeds()
+        now = dt_util.utcnow()
+        for entity_id in entity_ids:
+            entity = entities.async_get(entity_id)
+            switch = self.feed_of(entity_id) or (
+                device_feeds.get(entity.device_id) if entity else None
+            )
+            state = self.hass.states.get(switch) if switch else None
+            if (
+                state is not None
+                and state.state == STATE_ON
+                and now - state.last_changed >= GRACE_PERIOD
+            ):
+                return True
+        return False
+
+    def unavailable_by_entry(self) -> dict[str, list[str]]:
+        """Entities unavailable for longer than the grace period, by config entry."""
+        now = dt_util.utcnow()
+        entities = er.async_get(self.hass)
+        found: dict[str, list[str]] = {}
+        device_feeds = self._device_feeds()
         for entity in entities.entities.values():
             if (
                 entity.disabled_by is not None
@@ -329,7 +365,10 @@ class Watchdog:
             entry = self.hass.config_entries.async_get_entry(entry_id)
             if entry is None:
                 continue
-            if issue.get("last_action"):
+            if issue.get("last_action") == ACTION_PAIR:
+                self._log(entry, ACTION_PAIR, "fixed")
+                LOGGER.info("Watchdog: %s is back after re-pairing", entry.title)
+            elif issue.get("last_action"):
                 self._learned(entry.domain)["fixes"] += 1
                 self._log(entry, issue["last_action"], "fixed")
                 LOGGER.info("Watchdog: %s is back after a reload", entry.title)
@@ -337,6 +376,7 @@ class Watchdog:
                 self._log(entry, "none", "recovered on its own")
 
         reloads = 0
+        to_pair: list[tuple[Any, dict[str, Any]]] = []
         for entry_id, entity_ids in down.items():
             entry = self.hass.config_entries.async_get_entry(entry_id)
             if (
@@ -375,6 +415,12 @@ class Watchdog:
                     # can't help, so wait without counting an attempt.
                     issue["skipped"] = "the device is not on the network"
                     changed = True
+                    if self.powered_on(entity_ids):
+                        # Powered but silent: probably in pairing mode.
+                        if issue.get("pair_attempts", 0) < MAX_PAIR_ATTEMPTS:
+                            to_pair.append((entry, issue))
+                        else:
+                            self._notify(entry, issue)
                     continue
             if reloads >= MAX_RELOADS_PER_CHECK:
                 continue
@@ -385,8 +431,59 @@ class Watchdog:
             if issue["attempts"] >= NOTIFY_AFTER_ATTEMPTS:
                 self._notify(entry, issue)
 
+        if to_pair and await self._async_pair(to_pair, now):
+            changed = True
         if changed:
             self._save()
+
+    async def _async_pair(
+        self, to_pair: list[tuple[Any, dict[str, Any]]], now: datetime
+    ) -> bool:
+        """Re-add devices that look stuck in pairing mode; True when started."""
+        from .pairing import async_start_pairing, pairing_run, pairing_settings
+
+        last = _parse(self.last_pairing)
+        if (last and now - last < PAIR_COOLDOWN) or pairing_run(self.hass).running:
+            return False
+        try:
+            pairing_settings(self.hass)
+        except HomeAssistantError:
+            return False  # Not set up: the user re-adds devices themselves.
+        names = [entry.title for entry, _ in to_pair]
+
+        @callback
+        def _done(run: Any) -> None:
+            joined = [d.get("name") or d.get("id") for d in run.paired]
+            if run.error:
+                result = f"Re-pairing failed: {run.error}"
+            elif joined:
+                result = f"Re-added: {', '.join(joined)}."
+            else:
+                result = (
+                    "No device joined. A bulb that is dark (not flashing) while "
+                    "its switch is on may have failed or lost power."
+                )
+            persistent_notification.async_create(
+                self.hass,
+                f"{', '.join(names)} stayed off the network while the wall switch "
+                f"was on, so Alfred tried re-adding them. {result}",
+                title="Alfred watchdog",
+                notification_id=PAIR_NOTIFICATION_ID,
+            )
+
+        try:
+            await async_start_pairing(self.hass, PAIR_SECONDS, None, _done)
+        except HomeAssistantError as err:
+            LOGGER.warning("Watchdog could not start re-pairing: %s", err)
+            return False
+        self.last_pairing = _iso(now)
+        LOGGER.info("Watchdog: re-pairing %s", ", ".join(names))
+        for entry, issue in to_pair:
+            issue["pair_attempts"] = issue.get("pair_attempts", 0) + 1
+            issue["last_action"] = ACTION_PAIR
+            issue["last_attempt"] = _iso(now)
+            self._log(entry, ACTION_PAIR, "started")
+        return True
 
     async def _async_reload(
         self, entry: Any, issue: dict[str, Any], now: datetime
@@ -420,11 +517,16 @@ class Watchdog:
         if issue.get("notified"):
             return
         issue["notified"] = True
-        tried = (
-            f"Alfred reloaded it {issue['attempts']} times without success"
-            if issue["attempts"]
-            else "Alfred stopped reloading it because that has never helped"
-        )
+        if issue.get("pair_attempts"):
+            tried = (
+                f"Alfred tried re-adding it {issue['pair_attempts']} times while "
+                "its wall switch was on, without success. It may have failed or "
+                "lost power"
+            )
+        elif issue["attempts"]:
+            tried = f"Alfred reloaded it {issue['attempts']} times without success"
+        else:
+            tried = "Alfred stopped reloading it because that has never helped"
         persistent_notification.async_create(
             self.hass,
             (

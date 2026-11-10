@@ -293,3 +293,84 @@ async def test_taught_feed(hass: HomeAssistant, setup_alfred, freezer, reload) -
     freezer.tick(GRACE_PERIOD)
     await watchdog.async_check()
     reload.assert_not_called()
+
+
+async def test_re_pairs_powered_bulb(
+    hass: HomeAssistant, setup_alfred, freezer, reload
+) -> None:
+    """A bulb that stays silent while its switch is on gets re-added, twice at most."""
+    watchdog = async_get_watchdog(hass)
+    bulb = MockConfigEntry(
+        domain="tuya_local",
+        title="Kitchen DL 1",
+        data={"device_id": "bulb1", "host": "192.168.68.20"},
+    )
+    bulb.add_to_hass(hass)
+    hass.data["tuya_local"] = {"bulb1": {"device": MagicMock(has_returned_state=False)}}
+    light = _entity(hass, bulb, "kitchen_dl_1", "unavailable")
+    hass.states.async_set("light.wall", "on")
+    watchdog.teach_feed("light.wall", [light])
+    freezer.tick(GRACE_PERIOD)
+    done = []
+
+    async def _start(hass, seconds, device_id, on_done):
+        done.append(on_done)
+
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value={}),
+        patch("custom_components.alfred.pairing.pairing_settings", return_value={}),
+        patch(
+            "custom_components.alfred.pairing.async_start_pairing", side_effect=_start
+        ),
+    ):
+        await watchdog.async_check()
+        assert len(done) == 1
+        issue = watchdog.issues[bulb.entry_id]
+        assert issue["pair_attempts"] == 1
+        assert issue["last_action"] == "re-pair"
+        done[0](MagicMock(paired=[], error=None))
+        assert "No device joined" in str(_notifications(hass))
+
+        # Not again within the cooldown.
+        await watchdog.async_check()
+        assert len(done) == 1
+        freezer.tick(timedelta(hours=6))
+        await watchdog.async_check()
+        assert len(done) == 2
+        freezer.tick(timedelta(hours=6))
+        await watchdog.async_check()
+        assert len(done) == 2
+    reload.assert_not_called()
+    assert "tried re-adding it 2 times" in str(_notifications(hass))
+
+    # Back on the network: the issue closes as fixed by re-pairing.
+    hass.states.async_set(light, "on")
+    with patch("custom_components.alfred.admin._scan_lan", return_value={}):
+        await watchdog.async_check()
+    assert bulb.entry_id not in watchdog.issues
+    assert watchdog.history[-1]["action"] == "re-pair"
+
+
+async def test_no_re_pair_without_settings_or_power(
+    hass: HomeAssistant, setup_alfred, freezer, reload
+) -> None:
+    """No pairing without Alfred's Tuya settings, or with no known powered switch."""
+    watchdog = async_get_watchdog(hass)
+    bulb = MockConfigEntry(
+        domain="tuya_local", title="Kitchen DL 1", data={"device_id": "bulb1"}
+    )
+    bulb.add_to_hass(hass)
+    hass.data["tuya_local"] = {"bulb1": {"device": MagicMock(has_returned_state=False)}}
+    light = _entity(hass, bulb, "kitchen_dl_1", "unavailable")
+    freezer.tick(GRACE_PERIOD)
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value={}),
+        patch("custom_components.alfred.pairing.async_start_pairing") as start,
+    ):
+        await watchdog.async_check()  # No feed known.
+        hass.states.async_set("light.wall", "on")
+        watchdog.teach_feed("light.wall", [light])
+        freezer.tick(GRACE_PERIOD)
+        await watchdog.async_check()  # Pairing settings missing.
+    start.assert_not_called()
+    assert "pair_attempts" not in watchdog.issues[bulb.entry_id]
