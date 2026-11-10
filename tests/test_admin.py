@@ -113,6 +113,7 @@ async def test_admin_tools_only_for_admins(
         "set_watchdog_ignore",
         "set_watchdog_feed",
         "tuya_cloud_device",
+        "pair_tuya_devices",
     }
 
     hass_admin_user.groups = []

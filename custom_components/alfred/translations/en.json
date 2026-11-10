@@ -38,7 +38,12 @@
           "max_tokens": "Maximum response tokens",
           "web_search": "Allow web search",
           "github_token": "GitHub token",
-          "github_repo": "GitHub repository"
+          "github_repo": "GitHub repository",
+          "tuya_access_id": "Tuya Access ID",
+          "tuya_access_secret": "Tuya Access Secret",
+          "tuya_data_center": "Tuya data center",
+          "wifi_ssid": "Wi-Fi name",
+          "wifi_password": "Wi-Fi password"
         },
         "data_description": {
           "prompt": "Alfred's personality and rules. Supports templates.",
@@ -47,7 +52,12 @@
           "effort": "How hard Claude thinks before answering. Low keeps voice replies snappy.",
           "web_search": "Lets Alfred look things up online (news, opening hours, general knowledge). Billed per search.",
           "github_token": "Optional. A fine-grained token with Issues read and write access lets Alfred admin report bugs as GitHub issues.",
-          "github_repo": "Where bug reports go, as owner/name."
+          "github_repo": "Where bug reports go, as owner/name.",
+          "tuya_access_id": "Optional. From your cloud project at platform.tuya.com (Overview tab), with the Smart Life app linked under Devices. Lets Alfred re-add devices that fell back into pairing mode.",
+          "tuya_access_secret": "From the same Overview tab.",
+          "tuya_data_center": "The data center you chose for the cloud project.",
+          "wifi_ssid": "The 2.4 GHz Wi-Fi network re-added devices join.",
+          "wifi_password": "Its password. Only sent to devices that are in pairing mode."
         }
       }
     }
@@ -58,6 +68,16 @@
         "low": "Low (fastest)",
         "medium": "Medium",
         "high": "High (most thorough)"
+      }
+    },
+    "tuya_data_center": {
+      "options": {
+        "eu": "Central Europe",
+        "weu": "Western Europe",
+        "us": "Western America",
+        "eus": "Eastern America",
+        "cn": "China",
+        "in": "India"
       }
     }
   },
