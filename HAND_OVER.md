@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-12 (04:55)
+**Last updated:** 2026-11-13 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -43,7 +43,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - Dashboards (e.g. Main Dash) live in `.storage/` and are therefore **not** in git either.
 - `packages/` (loaded with `!include_dir_named packages`): `water_stats.yaml` (config PRs #7/#8: municipal in, rain in,
   house use, irrigation out per zone, live flow rates, `input_boolean.water_house_supply`) and `solar_stats.yaml`
-  (PR #9: solar autarky today sensor). Both feed the **House Stats** dashboard.
+  (PR #9: solar autarky today sensor), and `gas_stats.yaml` (PR #11: `sensor.gas_level_filtered`, 2-hour median of
+  1-minute samples to drop junk readings). All feed the **House Stats** dashboard.
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -169,6 +170,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 - **Gas (LPG, 19 kg cylinder):** eyeGas meter = Mopeka Pro Check ("Pro Check 8B5E"), read by the built-in Mopeka
   integration; level `sensor.outside_eyegas_bridge_lpg_level` (through an ESP32 Bluetooth proxy, set up 2026-11-10).
   Readings fail when the sensor can't see through the cylinder: keep the base clean, sensor centred, cylinder level.
+  Raw readings jump around (junk 6%/41%/100% values), so the Gas tab and the alert use `sensor.gas_level_filtered`.
 - **Solar:** Sunsynk integration (battery held at 50% overnight for outages, by choice). **House Stats** dashboard
   (`house-stats`, created 2026-11-10): gas gauge and history, Electricity (Sunsynk power flow card in Lite style,
   daily autarky chart), Water tab, appliance power.
@@ -211,11 +213,14 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 `script.dstv_stream_living_room`, `script.dstv_sport_living_room` (open those apps on the living room TV, seen 2026-11-07);
 19 `script.mika_*` Huckleberry voice-logging scripts (section 5).
 
-Added 2026-11-10: **Gas low alert** (`automation.gas_low_alert`, notifies Jacques and Tania at 10% or less, with kg left)
+Added 2026-11-10: **Gas low alert** (`automation.gas_low_alert`, notifies Jacques and Tania when the filtered level stays at
+10% or less for 30 minutes, with kg left; changed 2026-11-12 after a false alert)
 and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_room_tv`, on/off with the TV, ignores drop-outs).
 
 ## 7. Open items
 
+- Gas: the EyeGas Bridge ESP32 outside went offline on 2026-11-12 at 09:57, so there's no gas reading; check its power
+  and Wi-Fi. The eyeGas sensor battery fell from 41% to about 17% in two days; check or replace it.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
 - Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
@@ -244,6 +249,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-13: Filtered gas level sensor (config PR #11) and 30-minute hold on the gas alert; gas bridge offline and low sensor battery added to open items.
 - 2026-11-12: Alfred 0.16.0 (PR #29, watchdog re-pairs bulbs itself, taught switch feeds) installed; Smart Life and re-pairing notes moved into section 2; app PR #20.
 - 2026-11-10: Gas level via Mopeka/ESP32 proxy and Gas low alert; House Stats dashboard (solar, water, gas) with config packages `water_stats` and `solar_stats` (PRs #7–#9); TV Light (MohuanLED, BJ_LED) following the TV; Alfred 0.15.0 (dashboards, Marketplace, re-pairing, Bluetooth); Mika voice logging confirmed.
 - 2026-11-09: Garage Switch Follows Door now re-syncs every 2 min and on reconnect; garage switch back online; bulb and remote threads closed.
