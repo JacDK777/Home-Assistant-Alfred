@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-09 (04:55)
+**Last updated:** 2026-11-14 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -41,6 +41,10 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - Automations, scripts and scenes are deliberately **not** in git: they are UI-managed and edited
     through the HA connector, so tracking them would make Git pull conflict.
   - Dashboards (e.g. Main Dash) live in `.storage/` and are therefore **not** in git either.
+- `packages/` (loaded with `!include_dir_named packages`): `water_stats.yaml` (config PRs #7/#8: municipal in, rain in,
+  house use, irrigation out per zone, live flow rates, `input_boolean.water_house_supply`) and `solar_stats.yaml`
+  (PR #9: solar autarky today sensor), and `gas_stats.yaml` (PR #11: `sensor.gas_level_filtered`, 2-hour median of
+  1-minute samples to drop junk readings). All feed the **House Stats** dashboard.
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -50,7 +54,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 ### `JacDK777/Home-Assistant-Alfred`: the Alfred custom integration
 - Default branch: `claude/amazing-bell-51b2u2` (there is no `main`).
 - Alfred = Claude as an Assist conversation agent (HACS custom repository, type Integration).
-  Version 0.12.2 (installed 2026-11-07). Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
+  Version 0.16.0 (installed 2026-11-11). Default model `claude-haiku-5-5`, requires `anthropic>=0.125.0` (HA's pin).
 - Merged PRs: #1 CI fixes + MIT license, #2 `voluptuous-openapi` requirement,
   #3 Alfred admin tools (error log, automations/scripts, GitHub issues), #4 tool-format fix for HA 2026.9+,
   #7 dashboard tools (list/get/save_dashboard) + find_entities, #8 check_tuya_local_devices /
@@ -62,7 +66,10 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   temperature actions, #18 (0.10.0) Huckleberry activity timers (bath, tummy time), #19 (0.10.1) device-registry deprecation fix.
   #20/#21 (0.11.x) fresh Tuya Local keys from the Tuya cloud integration, #22/#23 (0.12.0/0.12.1) watchdog,
   #24 (0.12.2) `set_entity_enabled` and `tuya_cloud_device` (read and change Smart Life device settings, everything but pairing).
-  Open: #25 automatic re-pairing (EZ mode) of bulbs in pairing mode.
+  #26 create/update/delete_dashboard, #27 (0.14.0) HACS tools use HA 2026.11's built-in Marketplace,
+  #25 + #28 (0.15.0) `pair_tuya_devices` (EZ-mode re-pairing; Tuya IoT and Wi-Fi details in Alfred's options),
+  `add_hacs_custom_repository` and `list_bluetooth_devices`.
+  #29 (0.16.0) watchdog re-pairs a bulb by itself when it stays offline 10 min with its switch on.
   Alfred can restart HA itself (call_action).
 - After updating Alfred (`update.alfred_update` install + restart; see the standing rule below), start a **new Claude thread** to see the new tools.
 - **Standing rule (Jacques, 2026-11-06): after Jacques merges an Alfred PR, Claude installs the update itself** (`update.install` on
@@ -78,6 +85,14 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   the dashboard first, then restart HA. Run in the Terminal add-on:
   `curl -sL https://raw.githubusercontent.com/JacDK777/Home-Assistant-Alfred/3e492a6a44986e53616657a7cc435a63ce3d07e6/scripts/tuya_swap.py -o /tmp/tuya_swap.py && python3 /tmp/tuya_swap.py`
   (`apk add python3` if python3 is missing).
+
+#### Alfred: Smart Life control and re-pairing (PRs #24, #25, #29; 2026-11-10/11)
+- `tuya_cloud_device`: reads and changes any Smart Life device setting through HA's Tuya integration (for example `relay_status=last`). All 8 wall switches are set to "last state".
+- `pair_tuya_devices`: re-adds devices in EZ pairing mode (fast flash) through the Tuya IoT Platform project "HA TuyaLocal" (Central Europe). The credentials and Wi-Fi details are in Alfred's options. The free IoT Core plan needs renewing every few months (error 28841002 means it has expired).
+- The watchdog re-pairs a Tuya Local bulb by itself when it stays offline for 10 minutes while its known switch is on. It tries at most twice per outage and at most once every 6 hours.
+- Taught feeds: `switch.main_bedroom_light_switch_1` powers Main Bedroom DL1–5. `light.great_room_light_switch_3_gang_1` powers the 23 Great Room bulbs.
+- Kitchen DL1 is dark while its switch is on, so it has probably failed and needs replacing. Re-pairing hasn't been proven on a real flashing bulb yet.
+- In this cloud session, new Alfred tools can be called through `conversation.process` with agent `conversation.alfred` until a new session lists them.
 
 ### `JacDK777/Alfred_App`: the standalone Alfred phone app
 - Android app (sideloaded on the S22): "Hey Alfred" wake word, Claude (Sonnet by default) plus the HA MCP server,
@@ -151,7 +166,16 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   `mika_nursing` ("breastfeeding extras": switch/pause/resume/cancel). Helper `mika_breastfeed_stop_side` is not exposed.
   Added 2026-11-04: `mika_log_medication` and `mika_log_temperature` (need Alfred 0.9.0, Alfred PR #17, which adds `alfred.huckleberry_log_medication` / `huckleberry_list_medications` / `huckleberry_log_temperature` because the Huckleberry integration has no medicine or temperature action; unknown medicines are refused unless confirmed as new), plus `mika_log_growth` (kg/cm) and `mika_log_pump` (ml + minutes). Live timers `mika_bath` and `mika_tummy_time` (start/stop/pause/resume/cancel) need Alfred 0.10.0 (PR #18, `alfred.huckleberry_activity_timer`); `mika_log_activity` still logs a finished one. Huckleberry is now v0.5.9. Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
 - **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
-  device `eyegas` at 192.168.68.115 (often unreachable).
+  device `eyegas` at 192.168.68.115 (often unreachable; to be deleted).
+- **Gas (LPG, 19 kg cylinder):** eyeGas meter = Mopeka Pro Check ("Pro Check 8B5E"), read by the built-in Mopeka
+  integration; level `sensor.outside_eyegas_bridge_lpg_level` (through an ESP32 Bluetooth proxy, set up 2026-11-10).
+  Readings fail when the sensor can't see through the cylinder: keep the base clean, sensor centred, cylinder level.
+  Raw readings jump around (junk 6%/41%/100% values), so the Gas tab and the alert use `sensor.gas_level_filtered`.
+- **Solar:** Sunsynk integration (battery held at 50% overnight for outages, by choice). **House Stats** dashboard
+  (`house-stats`, created 2026-11-10): gas gauge and history, Electricity (Sunsynk power flow card in Lite style,
+  daily autarky chart), Water tab, appliance power.
+- **TV Light** (MohuanLED Bluetooth strip, shows as BJ_LED_M): BJ_LED BLE custom integration from the Marketplace
+  (2026-11-10). It doesn't report its real state. Only one connection at a time, so close the MohuanLED app.
 
 ## 6. Automations (UI-managed, not in git)
 
@@ -187,23 +211,28 @@ home Wi-Fi, which can lock bulbs out of local connections.
 
 Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs); `script.netflix_living_room`,
 `script.dstv_stream_living_room`, `script.dstv_sport_living_room` (open those apps on the living room TV, seen 2026-11-07);
+`script.dstv_supersport_grandstand_living_room`, `..._cricket_...`, `..._rugby_...` (open those SuperSport channels, seen 2026-11-14);
 19 `script.mika_*` Huckleberry voice-logging scripts (section 5).
+
+Added 2026-11-10: **Gas low alert** (`automation.gas_low_alert`, notifies Jacques and Tania when the filtered level stays at
+10% or less for 30 minutes, with kg left; changed 2026-11-12 after a false alert)
+and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_room_tv`, on/off with the TV, ignores drop-outs).
 
 ## 7. Open items
 
+- Gas: the EyeGas Bridge ESP32 outside went offline on 2026-11-12 at 09:57, so there's no gas reading; check its power
+  and Wi-Fi. The eyeGas sensor battery fell from 41% to about 17% in two days; check or replace it.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
 - Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
   the 2-minute re-sync above should stop that. Confirm the next press works (user).
 - Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
-- Alfred re-pairing (PR #25): waiting on Jacques to merge it, create a Tuya developer cloud project (platform.tuya.com,
-  linked to Smart Life) and type its Access ID/Secret plus Wi-Fi details into Alfred's settings (not in chat or this doc);
-  then Claude tests on Kitchen DL1. All 8 wall switches already remember their last state (checked 2026-11-07).
+- Kitchen DL1 is dark with its switch on: probably a failed bulb to replace. Re-pairing is still unproven on a real flashing bulb.
+  The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10).
 - Alfred app PR #17 ("look" tool: TV screenshots and camera snapshots) ready to merge; seeing the TV needs the
   Android Debug Bridge integration set up on the living room TV (user step).
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
-- Mika: the 12 `script.mika_*` voice scripts are now exposed to Assist (seen 2026-11-04; `mika_breastfeed_stop_side` stays hidden).
-  Alfred 0.10.1 (PRs #17–#19) is installed and HA restarted (2026-11-04). Still to do: expose the 6 new scripts (medication, temperature, growth, pumping, bath timer, tummy time timer) and `sensor.mika_medication`, then test (user step).
+- Alfred app PR #20 (keeps listening after a short pause; "Wait when you pause mid-sentence" setting) ready to merge; test on the phone.
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
   or Zigbee/dumb bulbs). That thread was closed on 2026-11-08 without a choice; the watchdog now covers most bulb drop-outs.
@@ -221,6 +250,10 @@ Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send 
 
 ## 8. Change log
 
+- 2026-11-14: Three DStv SuperSport channel scripts (Grandstand, Cricket, Rugby) for the living room TV.
+- 2026-11-13: Filtered gas level sensor (config PR #11) and 30-minute hold on the gas alert; gas bridge offline and low sensor battery added to open items.
+- 2026-11-12: Alfred 0.16.0 (PR #29, watchdog re-pairs bulbs itself, taught switch feeds) installed; Smart Life and re-pairing notes moved into section 2; app PR #20.
+- 2026-11-10: Gas level via Mopeka/ESP32 proxy and Gas low alert; House Stats dashboard (solar, water, gas) with config packages `water_stats` and `solar_stats` (PRs #7–#9); TV Light (MohuanLED, BJ_LED) following the TV; Alfred 0.15.0 (dashboards, Marketplace, re-pairing, Bluetooth); Mika voice logging confirmed.
 - 2026-11-09: Garage Switch Follows Door now re-syncs every 2 min and on reconnect; garage switch back online; bulb and remote threads closed.
 - 2026-11-08: New one-off automation "Jacques onthou: huis toe vir rugby" (7 Nov reminder, now expired) noted.
 - 2026-11-07: Alfred 0.12.2 (Smart Life settings tools, watchdog fixes); re-pairing PR #25 and app look tool open; living room TV app scripts; Main Bedroom bulbs fixed (removed from open items); standing rules added.
