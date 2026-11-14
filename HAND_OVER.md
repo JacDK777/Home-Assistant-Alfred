@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-13 (04:55)
+**Last updated:** 2026-11-14 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -211,6 +211,7 @@ home Wi-Fi, which can lock bulbs out of local connections.
 
 Scripts: `script.living_room_tv_type_text`, `script.bedroom_tv_type_text` (send text to the TVs); `script.netflix_living_room`,
 `script.dstv_stream_living_room`, `script.dstv_sport_living_room` (open those apps on the living room TV, seen 2026-11-07);
+`script.dstv_supersport_grandstand_living_room`, `..._cricket_...`, `..._rugby_...` (open those SuperSport channels, seen 2026-11-14);
 19 `script.mika_*` Huckleberry voice-logging scripts (section 5).
 
 Added 2026-11-10: **Gas low alert** (`automation.gas_low_alert`, notifies Jacques and Tania when the filtered level stays at
@@ -249,6 +250,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-14: Three DStv SuperSport channel scripts (Grandstand, Cricket, Rugby) for the living room TV.
 - 2026-11-13: Filtered gas level sensor (config PR #11) and 30-minute hold on the gas alert; gas bridge offline and low sensor battery added to open items.
 - 2026-11-12: Alfred 0.16.0 (PR #29, watchdog re-pairs bulbs itself, taught switch feeds) installed; Smart Life and re-pairing notes moved into section 2; app PR #20.
 - 2026-11-10: Gas level via Mopeka/ESP32 proxy and Gas low alert; House Stats dashboard (solar, water, gas) with config packages `water_stats` and `solar_stats` (PRs #7–#9); TV Light (MohuanLED, BJ_LED) following the TV; Alfred 0.15.0 (dashboards, Marketplace, re-pairing, Bluetooth); Mika voice logging confirmed.
