@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-14 (04:55)
+**Last updated:** 2026-11-15 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -102,6 +102,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 - Voice: the user's own designed Afrikaans "Alfred" voice on ElevenLabs (credit-limited; ran out on 2026-11-05),
   PR #11 added Azure Speech "Willem" (free F0 tier, key pasted in Settings → Free voice, region South Africa North)
   and an offline Afrikaans voice as backup. Keys live in the app's settings, not in this doc.
+- Version 0.1.48 on the S22 (2026-11-14). Moving to its own Claude project; its full hand-over is
+  `handover/ALFRED_VOICE_APP_HANDOVER.md` in this project's shared files (no secrets).
 - Worked on in the "Build standalone Alfred voice app" thread. Not in this hand-over routine's GitHub scope, so no copy of this doc there.
 
 ## 3. How Claude reaches Home Assistant
@@ -220,8 +222,8 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 7. Open items
 
-- Gas: the EyeGas Bridge ESP32 outside went offline on 2026-11-12 at 09:57, so there's no gas reading; check its power
-  and Wi-Fi. The eyeGas sensor battery fell from 41% to about 17% in two days; check or replace it.
+- Gas: the EyeGas Bridge ESP32 is back online (2026-11-14 17:55), but the eyeGas sensor battery is at 7% with reading
+  quality 0, which likely causes the jumpy readings. Replace its CR2032 coin cell soon.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
 - Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
@@ -250,6 +252,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-15: Gas bridge back online, sensor battery at 7%; separate Alfred voice app hand-over doc noted.
 - 2026-11-14: Three DStv SuperSport channel scripts (Grandstand, Cricket, Rugby) for the living room TV.
 - 2026-11-13: Filtered gas level sensor (config PR #11) and 30-minute hold on the gas alert; gas bridge offline and low sensor battery added to open items.
 - 2026-11-12: Alfred 0.16.0 (PR #29, watchdog re-pairs bulbs itself, taught switch feeds) installed; Smart Life and re-pairing notes moved into section 2; app PR #20.
