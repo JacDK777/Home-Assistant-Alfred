@@ -15,6 +15,7 @@ from homeassistant.helpers import config_validation as cv
 from .admin import async_register_admin_api
 from .const import DOMAIN, LOGGER
 from .huckleberry import async_register_huckleberry_services
+from .tv import async_register_tv_service
 from .watchdog import async_start_watchdog
 
 PLATFORMS = (Platform.CONVERSATION,)
@@ -50,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlfredConfigEntry) -> bo
     entry.async_on_unload(async_register_admin_api(hass, dict(entry.options)))
     entry.async_on_unload(await async_start_watchdog(hass))
     entry.async_on_unload(async_register_huckleberry_services(hass))
+    entry.async_on_unload(async_register_tv_service(hass))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

@@ -177,6 +177,40 @@
           "description": "When stopping: optional notes to save with it."
         }
       }
+    },
+    "tv": {
+      "name": "See and drive an Android TV",
+      "description": "Press keys, type, or open an app or link on a TV from the Android Debug Bridge integration, then return a fresh screenshot and the text on screen, with the item that has focus.",
+      "fields": {
+        "entity_id": {
+          "name": "TV",
+          "description": "The TV's media player from the Android Debug Bridge integration."
+        },
+        "keys": {
+          "name": "Keys",
+          "description": "Keys to press in order, such as up, down, left, right, select, back, home, play_pause, wakeup, or any Android KEYCODE_ name. Write down*3 to press one three times. At most 30."
+        },
+        "text": {
+          "name": "Text",
+          "description": "Text to type into the box that has focus."
+        },
+        "open": {
+          "name": "Open",
+          "description": "An app package (com.netflix.ninja) or a web or app link to open first."
+        },
+        "wait": {
+          "name": "Wait",
+          "description": "Seconds to let the screen settle before looking. Defaults to 1.5 after opening, 0.6 after keys."
+        },
+        "picture": {
+          "name": "Picture",
+          "description": "Return a fresh screenshot (base64 JPEG)."
+        },
+        "screen_text": {
+          "name": "Screen text",
+          "description": "Return the text on screen and what has focus."
+        }
+      }
     }
   }
 }

@@ -141,6 +141,28 @@ signed-in connection:
 To use them by voice, wrap them in a script, expose the script to Assist and describe its
 fields so Alfred knows what to ask for.
 
+## See and drive an Android TV
+
+`alfred.tv` lets an assistant (the Alfred phone app) use a TV the way a person with the
+remote does: it presses keys, types, or opens an app or link, waits for the screen to
+settle, then returns a **fresh** screenshot (a 1280-wide JPEG, base64) and the text on
+screen with the item that has focus. Home Assistant's own TV screenshot is only renewed
+every few minutes, so this is what lets Alfred check each step before the next one.
+
+It needs Home Assistant's **Android Debug Bridge** integration for the TV and reuses its
+connection. Call it with `return_response`:
+
+```yaml
+action: alfred.tv
+data:
+  entity_id: media_player.living_room_android_tv_192_168_68_173
+  keys: ["down*2", "select"]   # or: text, open (com.netflix.ninja or a link), wait
+```
+
+The answer has `awake`, `app`, `focused`, `on_screen` (text with its position) and
+`picture`. The screen text comes from `uiautomator dump`, which some apps and playing
+videos don't give; the picture still comes back then.
+
 ## Cost
 
 Alfred uses prompt caching. Your exposed-device list, the tool definitions and the conversation so
