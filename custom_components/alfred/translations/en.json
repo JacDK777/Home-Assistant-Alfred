@@ -196,7 +196,7 @@
         },
         "open": {
           "name": "Open",
-          "description": "An app package (com.netflix.ninja) or a link (https://www.youtube.com/watch?v=...) to open first."
+          "description": "An app package (com.netflix.ninja) or a web or app link to open first."
         },
         "wait": {
           "name": "Wait",
