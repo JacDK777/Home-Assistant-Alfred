@@ -122,3 +122,39 @@ huckleberry_activity_timer:
     notes:
       selector:
         text:
+tv:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: androidtv
+          domain: media_player
+    keys:
+      example: '["down*2", "select"]'
+      selector:
+        text:
+          multiple: true
+    text:
+      selector:
+        text:
+    open:
+      example: com.netflix.ninja
+      selector:
+        text:
+    wait:
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.1
+          unit_of_measurement: s
+          mode: box
+    picture:
+      default: true
+      selector:
+        boolean:
+    screen_text:
+      default: true
+      selector:
+        boolean:
