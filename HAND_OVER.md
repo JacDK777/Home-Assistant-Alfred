@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-15 (04:55)
+**Last updated:** 2026-11-16 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -70,6 +70,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   #25 + #28 (0.15.0) `pair_tuya_devices` (EZ-mode re-pairing; Tuya IoT and Wi-Fi details in Alfred's options),
   `add_hacs_custom_repository` and `list_bluetooth_devices`.
   #29 (0.16.0) watchdog re-pairs a bulb by itself when it stays offline 10 min with its switch on.
+  #31 (0.17.0) `alfred.tv`: presses keys, types, or opens an app or link on an Android TV over the Android Debug Bridge
+  integration, then returns a fresh screenshot and the on-screen text (HA's own screenshot only refreshes every few minutes).
   Alfred can restart HA itself (call_action).
 - After updating Alfred (`update.alfred_update` install + restart; see the standing rule below), start a **new Claude thread** to see the new tools.
 - **Standing rule (Jacques, 2026-11-06): after Jacques merges an Alfred PR, Claude installs the update itself** (`update.install` on
@@ -234,7 +236,6 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 - Alfred app PR #17 ("look" tool: TV screenshots and camera snapshots) ready to merge; seeing the TV needs the
   Android Debug Bridge integration set up on the living room TV (user step).
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
-- Alfred app PR #20 (keeps listening after a short pause; "Wait when you pause mid-sentence" setting) ready to merge; test on the phone.
 - Bulbs: the power cycle automations are a workaround; the root cause is wall switches cutting power to smart
   bulbs. Options offered 2026-10-20 (permanent supply with switches as buttons, recommended; leave switches on;
   or Zigbee/dumb bulbs). That thread was closed on 2026-11-08 without a choice; the watchdog now covers most bulb drop-outs.
@@ -252,6 +253,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-16: Alfred 0.17.0 (PR #31, `alfred.tv` TV control with fresh screenshots); Alfred app PR #20 merged.
 - 2026-11-15: Gas bridge back online, sensor battery at 7%; separate Alfred voice app hand-over doc noted.
 - 2026-11-14: Three DStv SuperSport channel scripts (Grandstand, Cricket, Rugby) for the living room TV.
 - 2026-11-13: Filtered gas level sensor (config PR #11) and 30-minute hold on the gas alert; gas bridge offline and low sensor battery added to open items.
