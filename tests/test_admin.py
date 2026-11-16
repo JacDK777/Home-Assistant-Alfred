@@ -21,6 +21,11 @@ from homeassistant.core import Context, HomeAssistant, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+)
 from homeassistant.setup import async_setup_component
 
 from custom_components.alfred.admin import ADMIN_API_ID, async_follow_tuya_local_ips
@@ -112,6 +117,7 @@ async def test_admin_tools_only_for_admins(
         "remove_dashboard_resource",
         "check_tuya_local_devices",
         "update_tuya_local_device",
+        "add_tuya_local_device",
         "get_watchdog_status",
         "set_watchdog_ignore",
         "set_watchdog_feed",
@@ -625,6 +631,218 @@ async def test_tuya_local_key_refresh(
             entry_id=unknown.entry_id,
             refresh_local_key=True,
         )
+
+
+def _fake_tuya_local_flow(
+    hass: HomeAssistant, new_entities: list[str], calls: list[dict[str, Any]]
+):
+    """Fake Tuya Local's setup flow; the created entry gets these unique IDs."""
+    type_field = vol.Required("type", default="simple_light||||")
+    type_options = SelectSelector(
+        SelectSelectorConfig(
+            options=[
+                SelectOptionDict(value="simple_light||||", label="Simple light"),
+                SelectOptionDict(
+                    value="rgbcw_lightbulb||BNETA||PAR16", label="BNETA PAR16"
+                ),
+            ]
+        )
+    )
+    created: list[MockConfigEntry] = []
+
+    async def _init(domain: str, context: dict[str, Any]) -> dict[str, Any]:
+        assert domain == "tuya_local"
+        return {"type": "form", "flow_id": "f1", "step_id": "user"}
+
+    async def _configure(flow_id: str, user_input: dict[str, Any]) -> dict[str, Any]:
+        calls.append(user_input)
+        if "setup_mode" in user_input:
+            return {"type": "form", "flow_id": flow_id, "step_id": "local"}
+        if "local_key" in user_input:
+            return {
+                "type": "form",
+                "flow_id": flow_id,
+                "step_id": "select_type",
+                "data_schema": vol.Schema({type_field: type_options}),
+            }
+        if "type" in user_input:
+            return {"type": "form", "flow_id": flow_id, "step_id": "choose_entities"}
+        entry = MockConfigEntry(
+            domain="tuya_local",
+            title=user_input["name"],
+            data={**calls[1], "type": calls[2]["type"].split("||")[0]},
+        )
+        entry.add_to_hass(hass)
+        device = dr.async_get(hass).async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={("tuya_local", calls[1]["device_id"])},
+            name=user_input["name"],
+        )
+        for unique_id in new_entities:
+            er.async_get(hass).async_get_or_create(
+                "light",
+                "tuya_local",
+                unique_id,
+                config_entry=entry,
+                device_id=device.id,
+                suggested_object_id="new_bulb",
+            )
+        created.append(entry)
+        return {"type": "create_entry", "flow_id": flow_id, "result": entry}
+
+    return (
+        patch.object(hass.config_entries.flow, "async_init", side_effect=_init),
+        patch.object(
+            hass.config_entries.flow, "async_configure", side_effect=_configure
+        ),
+        created,
+    )
+
+
+async def test_add_tuya_local_device(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, tuya_cloud
+) -> None:
+    """A new Smart Life device is added and takes over a dead one's entity IDs."""
+    api = await _api(hass, hass_admin_user)
+    hass.data["tuya_local"] = {}
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+
+    old = MockConfigEntry(
+        domain="tuya_local",
+        title="Kitchen DL 1",
+        data={"device_id": "old1", "host": "192.168.68.128", "type": "rgbcw_lightbulb"},
+    )
+    old.add_to_hass(hass)
+    old_device = dev_reg.async_get_or_create(
+        config_entry_id=old.entry_id,
+        identifiers={("tuya_local", "old1")},
+        name="Kitchen DL 1",
+    )
+    dev_reg.async_update_device(old_device.id, area_id="kitchen")
+    ent_reg.async_get_or_create(
+        "light",
+        "tuya_local",
+        "old1-light",
+        config_entry=old,
+        device_id=old_device.id,
+        suggested_object_id="kitchen_dl_1",
+    )
+    ent_reg.async_update_entity("light.kitchen_dl_1", name="Kitchen DL 1")
+
+    tuya_cloud({"new1": "key1", "old1": "key0"})
+    scan = {"new1": {"gwId": "new1", "ip": "192.168.68.180", "version": "3.5"}}
+
+    with pytest.raises(HomeAssistantError, match="already this device"):
+        await _call(api, "add_tuya_local_device", device_id="old1")
+    with pytest.raises(HomeAssistantError, match="no local key"):
+        await _call(api, "add_tuya_local_device", device_id="nope")
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value={}),
+        pytest.raises(HomeAssistantError, match="not announcing"),
+    ):
+        await _call(api, "add_tuya_local_device", device_id="new1")
+
+    calls: list[dict[str, Any]] = []
+    init, configure, created = _fake_tuya_local_flow(hass, ["new1-light"], calls)
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        init,
+        configure,
+    ):
+        result = await _call(
+            api,
+            "add_tuya_local_device",
+            device_id="new1",
+            replace_entry_id=old.entry_id,
+        )
+
+    assert calls[0] == {"setup_mode": "manual"}
+    assert calls[1] == {
+        "device_id": "new1",
+        "host": "192.168.68.180",
+        "local_key": "key1",
+        "protocol_version": "3.5",
+        "poll_only": False,
+    }
+    # The old device's type is picked over Tuya Local's own best match.
+    assert calls[2] == {"type": "rgbcw_lightbulb||BNETA||PAR16"}
+    assert calls[3] == {"name": "Kitchen DL 1"}
+    new = created[0]
+    assert result == {
+        "success": True,
+        "entry_id": new.entry_id,
+        "name": "Kitchen DL 1",
+        "host": "192.168.68.180",
+        "protocol_version": "3.5",
+        "type": "rgbcw_lightbulb",
+        "replaced": "Kitchen DL 1",
+        "entities_taken_over": [{"from": "light.new_bulb", "to": "light.kitchen_dl_1"}],
+    }
+    assert hass.config_entries.async_get_entry(old.entry_id) is None
+    entity = ent_reg.async_get("light.kitchen_dl_1")
+    assert entity.config_entry_id == new.entry_id
+    assert entity.name == "Kitchen DL 1"
+    new_device = dr.async_entries_for_config_entry(dev_reg, new.entry_id)[0]
+    assert new_device.area_id == "kitchen"
+
+
+async def test_add_tuya_local_device_flow_errors(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, tuya_cloud
+) -> None:
+    """A refused connection or an unknown type stops the setup and aborts it."""
+    api = await _api(hass, hass_admin_user)
+    hass.data["tuya_local"] = {}
+    tuya_cloud({"new1": "key1"})
+    scan = {"new1": {"gwId": "new1", "ip": "192.168.68.180", "version": "3.5"}}
+
+    calls: list[dict[str, Any]] = []
+    init, configure, created = _fake_tuya_local_flow(hass, [], calls)
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        init,
+        configure,
+        patch.object(hass.config_entries.flow, "async_abort") as abort,
+        pytest.raises(HomeAssistantError, match="does not offer the type"),
+    ):
+        await _call(api, "add_tuya_local_device", device_id="new1", type="fan")
+    abort.assert_called_once_with("f1")
+    assert not created
+
+    async def _refuse(flow_id: str, user_input: dict[str, Any]) -> dict[str, Any]:
+        if "setup_mode" in user_input:
+            return {"type": "form", "flow_id": flow_id, "step_id": "local"}
+        return {
+            "type": "form",
+            "flow_id": flow_id,
+            "step_id": "local",
+            "errors": {"base": "connection"},
+        }
+
+    init, _, _ = _fake_tuya_local_flow(hass, [], [])
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        init,
+        patch.object(hass.config_entries.flow, "async_configure", side_effect=_refuse),
+        patch.object(hass.config_entries.flow, "async_abort"),
+        pytest.raises(HomeAssistantError, match="could not connect"),
+    ):
+        await _call(api, "add_tuya_local_device", device_id="new1")
+
+    # Without a wanted type, Tuya Local's preselected best match is used.
+    calls = []
+    init, configure, created = _fake_tuya_local_flow(hass, [], calls)
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        init,
+        configure,
+    ):
+        result = await _call(
+            api, "add_tuya_local_device", device_id="new1", name="Spare bulb"
+        )
+    assert calls[2] == {"type": "simple_light||||"}
+    assert result["name"] == "Spare bulb"
+    assert "replaced" not in result
 
 
 async def test_follow_tuya_local_keys(

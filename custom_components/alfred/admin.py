@@ -5,23 +5,26 @@ scripts and scenes, run any Home Assistant action, create, edit and delete
 dashboards,
 look up and rename entities and devices, add, download and update Marketplace
 (HACS) repositories, list the Bluetooth devices Home Assistant hears,
-manage dashboard resources, check and fix Tuya Local connections and file GitHub
-issues.
+manage dashboard resources, check, fix and add Tuya Local devices and file
+GitHub issues.
 They are only offered to Home Assistant administrators.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+import contextlib
 import re
 from typing import Any
 import uuid
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType, UnknownFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     aiohttp_client,
@@ -1562,6 +1565,293 @@ class UpdateTuyaLocalDeviceTool(AdminTool):
         return {"success": True, "name": entry.title, **changes, **result}
 
 
+def _form_field(result: dict[str, Any], field: str) -> tuple[Any, Any]:
+    """The schema marker and validator of one field of a flow form."""
+    schema = result.get("data_schema")
+    for marker, validator in (getattr(schema, "schema", None) or {}).items():
+        if str(marker) == field:
+            return marker, validator
+    return None, None
+
+
+def _choose_tuya_local_type(result: dict[str, Any], config_type: str | None) -> str:
+    """Pick the device type option on Tuya Local's select_type form.
+
+    Its options are "config_type||manufacturer||model" keys. Without a wanted
+    config type, the best match Tuya Local preselects is used.
+    """
+    marker, validator = _form_field(result, "type")
+    if marker is None:
+        raise HomeAssistantError("Tuya Local did not offer any device types")
+    options = [
+        option["value"] if isinstance(option, dict) else option
+        for option in (getattr(validator, "config", None) or {}).get("options", [])
+    ]
+    if config_type:
+        for value in options:
+            if value.split("||", 1)[0] == config_type:
+                return value
+        raise HomeAssistantError(
+            f"Tuya Local does not offer the type {config_type} for this device. "
+            f"It offers: {', '.join(v.split('||', 1)[0] for v in options)}."
+        )
+    default = marker.default() if callable(marker.default) else None
+    if default:
+        return default
+    if options:
+        return options[0]
+    raise HomeAssistantError("Tuya Local did not offer any device types")
+
+
+async def _async_add_via_tuya_local_flow(
+    hass: HomeAssistant,
+    device: dict[str, Any],
+    config_type: str | None,
+) -> Any:
+    """Add a device by stepping through Tuya Local's own manual setup.
+
+    Returns the new config entry.
+    """
+    flow = hass.config_entries.flow
+    result = await flow.async_init(TUYA_LOCAL, context={"source": SOURCE_USER})
+    flow_id = result.get("flow_id")
+    try:
+        if result.get("step_id") == "user":
+            result = await flow.async_configure(flow_id, {"setup_mode": "manual"})
+        if result.get("step_id") != "local":
+            raise HomeAssistantError(
+                "Tuya Local's setup did not offer manual entry "
+                f"(it went to {result.get('step_id') or result.get('reason')})"
+            )
+        result = await flow.async_configure(
+            flow_id,
+            {
+                "device_id": device["device_id"],
+                "host": device["host"],
+                "local_key": device["local_key"],
+                "protocol_version": device["protocol_version"],
+                "poll_only": False,
+            },
+        )
+        if result.get("type") == FlowResultType.ABORT:
+            raise HomeAssistantError(f"Tuya Local refused: {result.get('reason')}")
+        if result.get("errors"):
+            raise HomeAssistantError(
+                "Tuya Local could not connect to the device with its local key. "
+                "Check that it is powered and that the Smart Life app is closed."
+            )
+        if result.get("step_id") not in ("select_type", "select_type_auto_detected"):
+            raise HomeAssistantError(
+                f"Unexpected Tuya Local setup step {result.get('step_id')}"
+            )
+        chosen = _choose_tuya_local_type(result, config_type)
+        result = await flow.async_configure(flow_id, {"type": chosen})
+        if result.get("type") == FlowResultType.ABORT:
+            raise HomeAssistantError(f"Tuya Local refused: {result.get('reason')}")
+        if result.get("step_id") == "choose_entities":
+            result = await flow.async_configure(flow_id, {"name": device["name"]})
+        if result.get("type") != FlowResultType.CREATE_ENTRY:
+            raise HomeAssistantError(
+                "Tuya Local's setup did not finish "
+                f"({result.get('step_id') or result.get('reason')})"
+            )
+    except BaseException:
+        if flow_id:
+            with contextlib.suppress(UnknownFlow):
+                flow.async_abort(flow_id)
+        raise
+    return result["result"]
+
+
+async def _async_wait(check: Callable[[], bool], seconds: float = 10) -> bool:
+    """Wait up to seconds for check to become true."""
+    for _ in range(int(seconds / 0.25)):
+        if check():
+            return True
+        await asyncio.sleep(0.25)
+    return check()
+
+
+async def _async_take_over_tuya_local(
+    hass: HomeAssistant, old: Any, new: Any, new_device_id: str
+) -> list[dict[str, str]]:
+    """Give a new Tuya Local device the entity IDs, names and areas of an old one.
+
+    The old device's config entry is removed so its entity IDs are free; the
+    new device's matching entities (same Tuya Local entity, by unique ID) then
+    take them over, so groups, automations and dashboards keep working.
+    """
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    old_device_id = {**old.data, **old.options}.get("device_id") or ""
+    await _async_wait(
+        lambda: bool(er.async_entries_for_config_entry(ent_reg, new.entry_id))
+    )
+    new_by_uid = {
+        entity.unique_id: entity
+        for entity in er.async_entries_for_config_entry(ent_reg, new.entry_id)
+    }
+    plan = []
+    for entity in er.async_entries_for_config_entry(ent_reg, old.entry_id):
+        twin = new_by_uid.get(
+            entity.unique_id.replace(old_device_id, new_device_id, 1)
+            if old_device_id
+            else None
+        )
+        if twin is not None and twin.domain == entity.domain:
+            plan.append((entity, twin))
+    old_devices = dr.async_entries_for_config_entry(dev_reg, old.entry_id)
+    new_devices = dr.async_entries_for_config_entry(dev_reg, new.entry_id)
+
+    await hass.config_entries.async_remove(old.entry_id)
+    await _async_wait(
+        lambda: all(
+            hass.states.async_available(entity.entity_id) for entity, _ in plan
+        ),
+        5,
+    )
+
+    moved = []
+    for entity, twin in plan:
+        if twin.entity_id == entity.entity_id:
+            continue
+        try:
+            ent_reg.async_update_entity(
+                twin.entity_id,
+                new_entity_id=entity.entity_id,
+                name=entity.name,
+                icon=entity.icon,
+                area_id=entity.area_id,
+                aliases=set(entity.aliases),
+                labels=set(entity.labels),
+                hidden_by=entity.hidden_by,
+            )
+        except ValueError as err:
+            LOGGER.warning(
+                "Could not give %s the entity ID %s: %s",
+                twin.entity_id,
+                entity.entity_id,
+                err,
+            )
+            continue
+        moved.append({"from": twin.entity_id, "to": entity.entity_id})
+    if old_devices and new_devices:
+        old_device = old_devices[0]
+        dev_reg.async_update_device(
+            new_devices[0].id,
+            name_by_user=old_device.name_by_user,
+            area_id=old_device.area_id,
+            labels=set(old_device.labels),
+        )
+    return moved
+
+
+class AddTuyaLocalDeviceTool(AdminTool):
+    """Add a Smart Life device to Tuya Local, optionally replacing an old one."""
+
+    name = "add_tuya_local_device"
+    description = (
+        "Add a device that is in the user's Smart Life account to Tuya Local, as "
+        "Tuya Local's own setup does: its local key comes from the Tuya cloud "
+        "integration and its IP address and protocol version from the network. "
+        "Find the device_id with tuya_cloud_device search. The device must be "
+        "powered and on the home Wi-Fi. type is a Tuya Local device config (for "
+        "example rgbcw_lightbulb); left out, Tuya Local's best match is used, or the "
+        "old device's type when replacing. Give replace_entry_id (from "
+        "check_tuya_local_devices) when the new device replaces a dead one: the old "
+        "device is removed from Tuya Local and the new one takes over its entity "
+        "IDs, names and area, so groups, automations and dashboards keep working. "
+        "Only call after the user has confirmed, naming the old device when "
+        "replacing."
+    )
+    parameters = vol.Schema(
+        {
+            vol.Required("device_id"): cv.string,
+            vol.Optional("name"): cv.string,
+            vol.Optional("type"): cv.string,
+            vol.Optional("replace_entry_id"): cv.string,
+        }
+    )
+
+    async def _async_run(
+        self, hass: HomeAssistant, args: dict[str, Any]
+    ) -> JsonObjectType:
+        device_id = args["device_id"]
+        entries = hass.config_entries.async_entries(TUYA_LOCAL)
+        for entry in entries:
+            if {**entry.data, **entry.options}.get("device_id") == device_id and (
+                not {**entry.data, **entry.options}.get("device_cid")
+            ):
+                raise HomeAssistantError(
+                    f"{entry.title} is already this device in Tuya Local "
+                    f"(entry_id {entry.entry_id})"
+                )
+        old = None
+        if replace_id := args.get("replace_entry_id"):
+            old = hass.config_entries.async_get_entry(replace_id)
+            if old is None or old.domain != TUYA_LOCAL:
+                raise HomeAssistantError(
+                    "No Tuya Local device with that replace_entry_id. "
+                    "Use check_tuya_local_devices."
+                )
+        keys = await _async_cloud_local_keys(hass)
+        if keys is None:
+            raise HomeAssistantError(
+                "The Tuya cloud integration is not set up or not loaded"
+            )
+        if not (local_key := keys.get(device_id)):
+            raise HomeAssistantError(
+                "The Tuya cloud has no local key for this device. Check the "
+                "device_id with tuya_cloud_device search."
+            )
+        found = await hass.async_add_executor_job(_scan_lan)
+        if not (announced := found.get(device_id)) or not announced.get("ip"):
+            raise HomeAssistantError(
+                "The device is not announcing itself on the network. Check that it "
+                "has power and is connected to the home Wi-Fi."
+            )
+        cloud_name = next(
+            (
+                device.name
+                for manager in _cloud_managers(hass)
+                if (
+                    device := (getattr(manager, "device_map", None) or {}).get(
+                        device_id
+                    )
+                )
+            ),
+            None,
+        )
+        old_config = {**old.data, **old.options} if old else {}
+        device = {
+            "device_id": device_id,
+            "host": announced["ip"],
+            "local_key": local_key,
+            "protocol_version": str(announced.get("version") or "auto"),
+            "name": args.get("name")
+            or (old.title if old else None)
+            or cloud_name
+            or device_id,
+        }
+        new = await _async_add_via_tuya_local_flow(
+            hass, device, args.get("type") or old_config.get("type")
+        )
+        result: dict[str, Any] = {
+            "success": True,
+            "entry_id": new.entry_id,
+            "name": new.title,
+            "host": device["host"],
+            "protocol_version": new.data.get("protocol_version"),
+            "type": new.data.get("type"),
+        }
+        if old is not None:
+            result["replaced"] = old.title
+            result["entities_taken_over"] = await _async_take_over_tuya_local(
+                hass, old, new, device_id
+            )
+        return result
+
+
 def _watchdog(hass: HomeAssistant) -> Any:
     from .watchdog import async_get_watchdog
 
@@ -1905,6 +2195,7 @@ class AlfredAdminAPI(llm.API):
             RemoveDashboardResourceTool(),
             CheckTuyaLocalDevicesTool(),
             UpdateTuyaLocalDeviceTool(),
+            AddTuyaLocalDeviceTool(),
             GetWatchdogStatusTool(),
             SetWatchdogIgnoreTool(),
             SetWatchdogFeedTool(),
