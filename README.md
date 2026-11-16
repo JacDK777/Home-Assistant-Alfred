@@ -103,6 +103,9 @@ Assistant**, also select **Alfred admin**. Alfred can then:
 - check which Tuya Local devices can't connect, compare the IP address saved for each
   one with the address it announces on your network, and update the IP address or
   protocol version ("Why are my Tuya Local bulbs unavailable?")
+- add a device from your Smart Life account to Tuya Local, optionally in place of a
+  dead one so the new device keeps the old one's entity IDs, names and area ("I
+  replaced Kitchen DL 1, add the new bulb in its place")
 - report bugs in Alfred as GitHub issues, with Alfred's recent log entries attached,
   if you add a GitHub token in the options. Use a fine-grained token limited to this
   repository with **Issues: read and write**. Issues are public.
