@@ -845,6 +845,32 @@ async def test_add_tuya_local_device_flow_errors(
     assert "replaced" not in result
 
 
+async def test_add_tuya_local_device_closes_stale_setup(
+    hass: HomeAssistant, setup_alfred, hass_admin_user: MockUser, tuya_cloud
+) -> None:
+    """A Tuya Local setup left open for the device is closed before adding it."""
+    api = await _api(hass, hass_admin_user)
+    hass.data["tuya_local"] = {}
+    tuya_cloud({"new1": "key1"})
+    scan = {"new1": {"gwId": "new1", "ip": "192.168.68.180", "version": "3.5"}}
+
+    init, configure, created = _fake_tuya_local_flow(hass, [], [])
+    flow = hass.config_entries.flow
+    with (
+        patch("custom_components.alfred.admin._scan_lan", return_value=scan),
+        init,
+        configure,
+        patch.object(
+            flow, "async_progress_by_handler", return_value=[{"flow_id": "stale"}]
+        ) as progress,
+        patch.object(flow, "async_abort") as abort,
+    ):
+        await _call(api, "add_tuya_local_device", device_id="new1", name="Plug")
+    progress.assert_called_once_with("tuya_local", match_context={"unique_id": "new1"})
+    abort.assert_called_once_with("stale")
+    assert created
+
+
 async def test_follow_tuya_local_keys(
     hass: HomeAssistant, setup_alfred, tuya_cloud
 ) -> None:
