@@ -1613,6 +1613,14 @@ async def _async_add_via_tuya_local_flow(
     Returns the new config entry.
     """
     flow = hass.config_entries.flow
+    # A Tuya Local setup left open for this device (a discovery card, or a
+    # dialog closed without finishing) holds its unique ID, and Tuya Local
+    # then refuses ours with already_in_progress. Close those first.
+    for stale in flow.async_progress_by_handler(
+        TUYA_LOCAL, match_context={"unique_id": device["device_id"]}
+    ):
+        with contextlib.suppress(UnknownFlow):
+            flow.async_abort(stale["flow_id"])
     result = await flow.async_init(TUYA_LOCAL, context={"source": SOURCE_USER})
     flow_id = result.get("flow_id")
     try:
