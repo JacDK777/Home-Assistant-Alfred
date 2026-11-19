@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-18 (04:55)
+**Last updated:** 2026-11-19 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -44,7 +44,10 @@ The same file lives in both GitHub repositories and in the Claude project's shar
 - `packages/` (loaded with `!include_dir_named packages`): `water_stats.yaml` (config PRs #7/#8: municipal in, rain in,
   house use, irrigation out per zone, live flow rates, `input_boolean.water_house_supply`) and `solar_stats.yaml`
   (PR #9: solar autarky today sensor), and `gas_stats.yaml` (PR #11: `sensor.gas_level_filtered`, 2-hour median of
-  1-minute samples to drop junk readings). All feed the **House Stats** dashboard.
+  1-minute samples to drop junk readings; PR #12 halves double-echo distances). These feed the **House Stats** dashboard.
+  `light_switch_buttons.yaml` (PRs #13/#14): room defaults for the remembered switch scenes after a restart (bedrooms about 1%
+  at 4110 K) and Tania's office switch as a button. `irrigation.yaml` (PRs #15/#16): Home Assistant runs all Rain Bird watering
+  (see section 5).
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -72,6 +75,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   #29 (0.16.0) watchdog re-pairs a bulb by itself when it stays offline 10 min with its switch on.
   #31 (0.17.0) `alfred.tv`: presses keys, types, or opens an app or link on an Android TV over the Android Debug Bridge
   integration, then returns a fresh screenshot and the on-screen text (HA's own screenshot only refreshes every few minutes).
+  #33 (0.18.1, 2026-11-18) closes a Tuya Local setup left open for the device before adding it.
   #32 (0.18.0, 2026-11-16) `add_tuya_local_device`: adds a Smart Life device to Tuya Local by itself (key from the Tuya cloud
   integration, IP from the network) and can replace a dead device, taking over its entity IDs, name and area.
   Alfred can restart HA itself (call_action).
@@ -173,15 +177,26 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   `mika_breastfeed_stop_left/right` (pause that side, feed stays open), `mika_breastfeed_stop` (save the feed), and
   `mika_nursing` ("breastfeeding extras": switch/pause/resume/cancel). Helper `mika_breastfeed_stop_side` is not exposed.
   Added 2026-11-04: `mika_log_medication` and `mika_log_temperature` (need Alfred 0.9.0, Alfred PR #17, which adds `alfred.huckleberry_log_medication` / `huckleberry_list_medications` / `huckleberry_log_temperature` because the Huckleberry integration has no medicine or temperature action; unknown medicines are refused unless confirmed as new), plus `mika_log_growth` (kg/cm) and `mika_log_pump` (ml + minutes). Live timers `mika_bath` and `mika_tummy_time` (start/stop/pause/resume/cancel) need Alfred 0.10.0 (PR #18, `alfred.huckleberry_activity_timer`); `mika_log_activity` still logs a finished one. Huckleberry is now v0.5.9. Exposed scripts and Mika sensors must be ticked in Settings → Voice assistants → Expose. Mika is mostly breastfed; bottles are breast milk.
-- **Rain Bird** (6 zones, controller at 192.168.68.168, reserved in the Deco; all zones went unavailable on 2026-10-17 until the connection was fixed), **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
-  device `eyegas` at 192.168.68.115 (often unreachable; to be deleted).
+- **Rain Bird** (controller at 192.168.68.168, reserved in the Deco). Zones: 1 Municipal Tank Input (fills the 10,000 L tank,
+  about 2,000 L/h, measured 2026-11-18), 2 Front Gardens (fynbos and succulents), 3 Front Grass, 4 Back Yard (grass plus tree drippers),
+  5 and 6 unused. Since 2026-11-18 the controller has **no programs**: `automation.irrigation_run_zone_schedules` (config PRs #15/#16)
+  runs each zone from `input_*.irrigation_<zone>_*` helpers (days, start, minutes, optional second run), with master switch
+  `input_boolean.irrigation_ha_schedule`, skipping at 2 mm forecast rain or tank below 15%. If HA is down, nothing waters.
+  **Irrigation** dashboard (`irrigation-dashboard`) shows the week and has an edit page per zone. The Tuya water tank sensor
+  (`sensor.water_tenk_1_level`) is unreliable; a 4–20 mA pressure-probe ESPHome build ("water-tank") is planned to replace it.
+  All irrigation work goes in the thread "Run irrigation and water tank", which stays open.
+- **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
+  device `eyegas` at 192.168.68.115 (the LPG gas Bluetooth bridge; keep it).
 - **Gas (LPG, 19 kg cylinder):** eyeGas meter = Mopeka Pro Check ("Pro Check 8B5E"), read by the built-in Mopeka
   integration; level `sensor.outside_eyegas_bridge_lpg_level` (through an ESP32 Bluetooth proxy, set up 2026-11-10).
   Readings fail when the sensor can't see through the cylinder: keep the base clean, sensor centred, cylinder level.
   Raw readings jump around (junk 6%/41%/100% values), so the Gas tab and the alert use `sensor.gas_level_filtered`.
 - **Solar:** Sunsynk integration (battery held at 50% overnight for outages, by choice). **House Stats** dashboard
   (`house-stats`, created 2026-11-10): gas gauge and history, Electricity (Sunsynk power flow card in Lite style,
-  daily autarky chart), Water tab, appliance power.
+  daily autarky chart), Water tab, appliance power. **Home Energy Plan** dashboard (`home-energy-plan`, 2026-11-18): schematic
+  floor plan with live watts per room. Only 5 plugs report power (oven mains, heat mat, plant fan, baby camera plug, Mika baby
+  monitor); aircon power sensors read 0 W. The layout is made up from HA areas until Jacques shares a real floor plan.
+- **Mika baby monitor** plug (`switch.mika_baby_monitor`, Tuya Local at 192.168.68.150, added 2026-11-18), tile on Main Dash (Guest Rooms).
 - **TV Light** (MohuanLED Bluetooth strip, shows as BJ_LED_M): BJ_LED BLE custom integration from the Marketplace
   (2026-11-10). It doesn't report its real state. Only one connection at a time, so close the MohuanLED app.
 
@@ -204,6 +219,9 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Tania's Office bulb auto power cycle | `automation.tania_s_office_bulb_auto_power_cycle` | off | Turned off 2026-11-16; see below |
 | Bulbs: reconnect when their wall switch turns on | `automation.great_room_bulbs_reconnect_when_switch_turns_on` | on | When Great Room gang 1, Main Bedroom or Guest Bedroom switch turns on, reloads the Tuya Local entry of any of its bulbs still unavailable at 5, 20 and 45 s. Never touches power (added 2026-11-16) |
 | Wall switches act as buttons (keep bulbs powered) | `automation.great_room_switch_acts_as_a_button_keep_bulbs_powered` | on | When one of those three switches turns off, turns it straight back on and toggles its bulbs: if any were on, saves them in `scene.last_on_<switch>` and turns all off; if all were off, restores that scene (if none is saved, e.g. after a restart, it uses `scene.great_room_default`). Bulbs blink briefly on each press because the relay cuts power for a moment. Disable to get the old behaviour (added 2026-11-16) |
+| Tania's office switch acts as a button (keep bulb powered) | `automation.tania_s_office_switch_acts_as_a_button_keep_bulb_powered` | on | Config package; toggles Tania Office Light LB 1 at once on each press (added 2026-11-18) |
+| Light switches: seed remembered state with room defaults | `automation.light_switches_seed_remembered_state_with_room_defaults` | on | Config package; after a restart, fills `scene.last_on_*` with room defaults |
+| Irrigation: run zone schedules | `automation.irrigation_run_zone_schedules` | on | Config package; runs the Rain Bird zones (section 5) |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
 | Water Tank: store reading after measuring window | `automation.water_tank_store_reading_after_measuring_window` | on | At 05:30, 07:30, 19:30 and 22:30 saves the 30-min median level into `input_number.water_tank_level` (ignores 0% unless already ≤10%) |
 | Water Tank: low level alert with fill option | `automation.water_tank_low_level_alert_with_fill_option` | on | After each stored reading below 20%, asks on the JDK phone to fill; Yes runs Rain Bird "Municipal Tank Input" for 30 min |
@@ -240,14 +258,17 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 - Kitchen DL1: no bulb fitted; entity disabled until one is (see section 2).
 - Downstairs Light Switch 3 is offline and not on the network (since 2026-11-16): check its breaker or Wi-Fi in person.
   Jacques says wall switches disconnecting is a big problem (2026-11-17); the voice app thread asked which switches drop off and whether they still work by hand.
-- DHCP reservations for the bulbs and switches: list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
+- Irrigation: tank pressure sensor (ESPHome "water-tank") to build; then repoint the water stats, tank alerts and irrigation skip to it
+  and delete the Tuya Water Tenk 1. The ESPHome `eyegas` entry is now the LPG gas bridge: do not delete it.
+- Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
+- DHCP reservations for the bulbs and switches (plus the Mika baby monitor plug at .150): list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
   The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10).
 - Alfred app PR #17 ("look" tool: TV screenshots and camera snapshots) ready to merge; seeing the TV needs the
   Android Debug Bridge integration set up on the living room TV (user step).
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Bulbs: root cause is wall switches cutting power to smart bulbs. On 2026-11-16 Jacques chose switches-as-buttons for Great Room
   gang 1, Main Bedroom and Guest Bedroom (automations above); power cycling is off. Confirm it behaves well in daily use
-  (Tania's Office is not covered). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) waits on merge.
+  (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) waits on merge.
   The four power-cycle automations are off, not deleted; delete them if Jacques agrees.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
@@ -263,6 +284,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-19: Irrigation moved into HA (config PRs #15/#16, Irrigation dashboard, controller programs deleted); light switch package (PRs #13/#14: bedroom defaults, Tania's office as a button); Alfred 0.18.1 (PR #33); Mika baby monitor plug; Home Energy Plan dashboard.
 - 2026-11-18: Config PR #12 merged (gas double-echo fix, gauge correct); Kitchen DL1 socket empty and entity disabled; `scene.great_room_default` fallback for the switch buttons; switch drop-outs raised as a problem.
 - 2026-11-17: Alfred 0.18.0 (PR #32, `add_tuya_local_device`); wall switches act as buttons and bulbs reconnect after 5 s (power-cycle automations off); Kitchen DL1 replacement pending; gas battery replaced, double-echo fix in config PR #12; Downstairs Light Switch 3 offline; DHCP reservation list.
 - 2026-11-16: Alfred 0.17.0 (PR #31, `alfred.tv` TV control with fresh screenshots); Alfred app PR #20 merged.
