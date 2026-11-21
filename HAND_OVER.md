@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-19 (04:55)
+**Last updated:** 2026-11-21 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -155,7 +155,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   - Ginny vacuum is on Tuya Local (`vacuum.ginny_2`, `sensor.ginny_battery_2`).
 - **Main Dash** (`lovelace` dashboard `new-dash-v1`, UI-managed) uses only Tuya Local entities since 2026-10-18;
   the Grow Domes card uses `switch.plant_fan_1` and the Ginny tiles use the Tuya Local vacuum.
-  The **Remotes** dashboard water tank uses `sensor.water_tenk_1_level`.
+  The water tank cards are on **House Stats → Water** and use the ESPHome probe (`sensor.outside_water_tank_*`) since 2026-11-20.
   - Old cloud **Tuya** integration is kept but most of its entities are disabled. Still enabled: Temp & Humidity
     Sensor (no local copy) and an unnamed A60 bulb.
 - **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
@@ -183,8 +183,12 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   runs each zone from `input_*.irrigation_<zone>_*` helpers (days, start, minutes, optional second run), with master switch
   `input_boolean.irrigation_ha_schedule`, skipping at 2 mm forecast rain or tank below 15%. If HA is down, nothing waters.
   **Irrigation** dashboard (`irrigation-dashboard`) shows the week and has an edit page per zone. The Tuya water tank sensor
-  (`sensor.water_tenk_1_level`) is unreliable; a 4–20 mA pressure-probe ESPHome build ("water-tank") is planned to replace it.
-  All irrigation work goes in the thread "Run irrigation and water tank", which stays open.
+  level now comes from the ESPHome pressure probe `water-tank` (DFRobot KIT0139, 0–5 m, 4–20 mA, installed 2026-11-20):
+  `sensor.outside_water_tank_water_level` and `..._water_volume` (litres; about 9,650 L above the probe when full). The old Tuya
+  "Water Tenk 1" ultrasonic sensor was removed.
+  Since 2026-11-19 irrigation, garden and tank work has moved to Jacques's separate garden and irrigation Claude project
+  (handover: "Garden, plants and irrigation handover" Claude doc; builder files copied from `irrigation/` in these project files).
+  The weekly re-plan reminders run there now.
 - **Ring** camera, **Baby Camera** motion sensor, garage door, ESPHome
   device `eyegas` at 192.168.68.115 (the LPG gas Bluetooth bridge; keep it).
 - **Gas (LPG, 19 kg cylinder):** eyeGas meter = Mopeka Pro Check ("Pro Check 8B5E"), read by the built-in Mopeka
@@ -211,7 +215,7 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Garage Door Automation Light Swicth | `automation.garage_light_auto` | on | Garage light on for 10 min when the door opens |
 | Garage Door Open/Close | `automation.new_automation_2` | on | Switch on opens, switch off closes (no door-state check). Ignores unavailable/unknown (no opening on restarts) and switch changes made by an automation, so the sync below never moves the door. 5-second lockout after each command: wait ~5 s between presses |
 | Garage Switch Follows Door | `automation.garage_switch_follows_door` | on | Keeps the garage wall switch (gang 3) in step with the door. Re-checks on door change, HA start, switch or door coming back online, and every 2 minutes; only acts when they disagree and the switch wasn't pressed in the last 90 s (updated 2026-11-08) |
-| Water Tank Notification | `automation.water_tank_notification_2` | off | Uses `sensor.water_tenk_1_level` |
+| Water Tank Notification | `automation.water_tank_notification_2` | on | Safety net on the ESPHome probe: alerts if the tank is below 10% for 10 min, or the probe reports a fault for 15 min (2026-11-20) |
 | Grow Lights Timer | `automation.grow_lights_timer` | on | Drives `switch.plant_fan_1` (Grow Domes) |
 | Great Room bulbs auto power cycle | `automation.great_room_bulbs_auto_power_cycle` | off | Turned off 2026-11-16; see below |
 | Main Bedroom bulbs auto power cycle | `automation.main_bedroom_bulbs_auto_power_cycle` | off | Turned off 2026-11-16; see below |
@@ -223,7 +227,7 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Light switches: seed remembered state with room defaults | `automation.light_switches_seed_remembered_state_with_room_defaults` | on | Config package; after a restart, fills `scene.last_on_*` with room defaults |
 | Irrigation: run zone schedules | `automation.irrigation_run_zone_schedules` | on | Config package; runs the Rain Bird zones (section 5) |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
-| Water Tank: store reading after measuring window | `automation.water_tank_store_reading_after_measuring_window` | on | At 05:30, 07:30, 19:30 and 22:30 saves the 30-min median level into `input_number.water_tank_level` (ignores 0% unless already ≤10%) |
+| Water Tank: store reading from probe | `automation.water_tank_store_reading_after_measuring_window` | on | Every 10 min copies the probe level (`sensor.outside_water_tank_water_level`) into `input_number.water_tank_level`; at 05:30, 07:30, 19:30 and 22:30 also fires `water_tank_level_stored` (drives the low-level alert and the water balance). Skips while the probe reports a fault (2026-11-20) |
 | Water Tank: low level alert with fill option | `automation.water_tank_low_level_alert_with_fill_option` | on | After each stored reading below 20%, asks on the JDK phone to fill; Yes runs Rain Bird "Municipal Tank Input" for 30 min |
 | Jacques onthou: huis toe vir rugby | `automation.jacques_onthou_huis_toe_vir_rugby` | on | One-off reminder made by Alfred: 12:30 on 2026-11-07, phone notification if Jacques isn't home (rugby). Expired; safe to delete |
 
@@ -258,8 +262,8 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 - Kitchen DL1: no bulb fitted; entity disabled until one is (see section 2).
 - Downstairs Light Switch 3 is offline and not on the network (since 2026-11-16): check its breaker or Wi-Fi in person.
   Jacques says wall switches disconnecting is a big problem (2026-11-17); the voice app thread asked which switches drop off and whether they still work by hand.
-- Irrigation: tank pressure sensor (ESPHome "water-tank") to build; then repoint the water stats, tank alerts and irrigation skip to it
-  and delete the Tuya Water Tenk 1. The ESPHome `eyegas` entry is now the LPG gas bridge: do not delete it.
+- Water tank probe is live (2026-11-20, config PR #17). Still to do in the irrigation project: re-measure per-zone flow rates with it.
+  The ESPHome `eyegas` entry is the LPG gas bridge: do not delete it.
 - Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
 - DHCP reservations for the bulbs and switches (plus the Mika baby monitor plug at .150): list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
   The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10).
@@ -284,6 +288,8 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-21: Water tank moved from the Tuya ultrasonic sensor ("Water Tenk 1", removed) to the ESPHome pressure probe `water-tank` (config PR #17, merged 2026-11-20). Tank automations, House Stats water cards and the water balance use it; the balance uses probe litres instead of 91.4 L per 1%.
+- 2026-11-20: Irrigation work moved to a separate garden and irrigation project (reminders there).
 - 2026-11-19: Irrigation moved into HA (config PRs #15/#16, Irrigation dashboard, controller programs deleted); light switch package (PRs #13/#14: bedroom defaults, Tania's office as a button); Alfred 0.18.1 (PR #33); Mika baby monitor plug; Home Energy Plan dashboard.
 - 2026-11-18: Config PR #12 merged (gas double-echo fix, gauge correct); Kitchen DL1 socket empty and entity disabled; `scene.great_room_default` fallback for the switch buttons; switch drop-outs raised as a problem.
 - 2026-11-17: Alfred 0.18.0 (PR #32, `add_tuya_local_device`); wall switches act as buttons and bulbs reconnect after 5 s (power-cycle automations off); Kitchen DL1 replacement pending; gas battery replaced, double-echo fix in config PR #12; Downstairs Light Switch 3 offline; DHCP reservation list.
