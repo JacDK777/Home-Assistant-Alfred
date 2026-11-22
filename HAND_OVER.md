@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-21 (04:55)
+**Last updated:** 2026-11-22 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -47,7 +47,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   1-minute samples to drop junk readings; PR #12 halves double-echo distances). These feed the **House Stats** dashboard.
   `light_switch_buttons.yaml` (PRs #13/#14): room defaults for the remembered switch scenes after a restart (bedrooms about 1%
   at 4110 K) and Tania's office switch as a button. `irrigation.yaml` (PRs #15/#16): Home Assistant runs all Rain Bird watering
-  (see section 5).
+  (see section 5). `irrigation_runs.yaml`: measures the litres of every valve run from the tank probe
+  (event `irrigation_run_measured`, logbook "Irrigation run", `sensor.irrigation_<zone>_litres_per_10_min`).
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -225,6 +226,7 @@ All automations point at Tuya Local entities (repointed 2026-10-18).
 | Wall switches act as buttons (keep bulbs powered) | `automation.great_room_switch_acts_as_a_button_keep_bulbs_powered` | on | When one of those three switches turns off, turns it straight back on and toggles its bulbs: if any were on, saves them in `scene.last_on_<switch>` and turns all off; if all were off, restores that scene (if none is saved, e.g. after a restart, it uses `scene.great_room_default`). Bulbs blink briefly on each press because the relay cuts power for a moment. Disable to get the old behaviour (added 2026-11-16) |
 | Tania's office switch acts as a button (keep bulb powered) | `automation.tania_s_office_switch_acts_as_a_button_keep_bulb_powered` | on | Config package; toggles Tania Office Light LB 1 at once on each press (added 2026-11-18) |
 | Light switches: seed remembered state with room defaults | `automation.light_switches_seed_remembered_state_with_room_defaults` | on | Config package; after a restart, fills `scene.last_on_*` with room defaults |
+| Git pull: restart if stopped | `automation.git_pull_restart_if_stopped` | on | Starts the Git pull add-on again when it has been stopped 15 min (it exits when GitHub is unreachable; it was stopped 20 Nov 11:20 to 21 Nov 05:37). Also checks every 30 min (added 2026-11-21) |
 | Irrigation: run zone schedules | `automation.irrigation_run_zone_schedules` | on | Config package; runs the Rain Bird zones (section 5) |
 | Update available - ask to install | `automation.update_available_ask_to_install` | on | Phone notification with Install / Not now; backs up first |
 | Water Tank: store reading from probe | `automation.water_tank_store_reading_after_measuring_window` | on | Every 10 min copies the probe level (`sensor.outside_water_tank_water_level`) into `input_number.water_tank_level`; at 05:30, 07:30, 19:30 and 22:30 also fires `water_tank_level_stored` (drives the low-level alert and the water balance). Skips while the probe reports a fault (2026-11-20) |
@@ -260,19 +262,23 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
   the 2-minute re-sync above should stop that. Confirm the next press works (user).
 - Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
 - Kitchen DL1: no bulb fitted; entity disabled until one is (see section 2).
-- Downstairs Light Switch 3 is offline and not on the network (since 2026-11-16): check its breaker or Wi-Fi in person.
+- Downstairs Light Switch 3 (IP .144) is offline: off the Wi-Fi and offline in the Tuya cloud too, so HA's settings are fine. On 2026-11-21
+  Pantry Light 1, Kitchen DL 1 and the water tank switch dropped at the same moment, so the downstairs Deco is the likely cause.
+  Next: check that Deco in the app and restart it, then power-cycle the switch at its breaker (which breaker is unknown).
+  Thread "Fix downstairs 3-gang switch disconnecting" is waiting on Jacques.
   Jacques says wall switches disconnecting is a big problem (2026-11-17); the voice app thread asked which switches drop off and whether they still work by hand.
-- Water tank probe is live (2026-11-20, config PR #17). Still to do in the irrigation project: re-measure per-zone flow rates with it.
+- Water tank probe is live (2026-11-20, config PR #17); per-zone flow rates re-measured with it (config PRs #20/#21, 2026-11-22).
   The ESPHome `eyegas` entry is the LPG gas bridge: do not delete it.
 - Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
 - DHCP reservations for the bulbs and switches (plus the Mika baby monitor plug at .150): list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
-  The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10).
+  The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10). Since about
+  2026-11-21 the watchdog's re-pairing fails with error 1108 ("uri path invalid"): renew or check the IoT project.
 - Alfred app PR #17 ("look" tool: TV screenshots and camera snapshots) ready to merge; seeing the TV needs the
   Android Debug Bridge integration set up on the living room TV (user step).
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Bulbs: root cause is wall switches cutting power to smart bulbs. On 2026-11-16 Jacques chose switches-as-buttons for Great Room
   gang 1, Main Bedroom and Guest Bedroom (automations above); power cycling is off. Confirm it behaves well in daily use
-  (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) waits on merge.
+  (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) is merged (seen 2026-11-22).
   The four power-cycle automations are off, not deleted; delete them if Jacques agrees.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
@@ -288,6 +294,8 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
+- 2026-11-22: "Git pull: restart if stopped" automation; Downstairs Light Switch 3 diagnosis (likely the downstairs Deco); Tuya re-pairing error 1108.
 - 2026-11-21: Water tank moved from the Tuya ultrasonic sensor ("Water Tenk 1", removed) to the ESPHome pressure probe `water-tank` (config PR #17, merged 2026-11-20). Tank automations, House Stats water cards and the water balance use it; the balance uses probe litres instead of 91.4 L per 1%.
 - 2026-11-20: Irrigation work moved to a separate garden and irrigation project (reminders there).
 - 2026-11-19: Irrigation moved into HA (config PRs #15/#16, Irrigation dashboard, controller programs deleted); light switch package (PRs #13/#14: bedroom defaults, Tania's office as a button); Alfred 0.18.1 (PR #33); Mika baby monitor plug; Home Energy Plan dashboard.
