@@ -47,7 +47,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   1-minute samples to drop junk readings; PR #12 halves double-echo distances). These feed the **House Stats** dashboard.
   `light_switch_buttons.yaml` (PRs #13/#14): room defaults for the remembered switch scenes after a restart (bedrooms about 1%
   at 4110 K) and Tania's office switch as a button. `irrigation.yaml` (PRs #15/#16): Home Assistant runs all Rain Bird watering
-  (see section 5).
+  (see section 5). `irrigation_runs.yaml`: measures the litres of every valve run from the tank probe
+  (event `irrigation_run_measured`, logbook "Irrigation run", `sensor.irrigation_<zone>_litres_per_10_min`).
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -266,7 +267,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
   Next: check that Deco in the app and restart it, then power-cycle the switch at its breaker (which breaker is unknown).
   Thread "Fix downstairs 3-gang switch disconnecting" is waiting on Jacques.
   Jacques says wall switches disconnecting is a big problem (2026-11-17); the voice app thread asked which switches drop off and whether they still work by hand.
-- Water tank probe is live (2026-11-20, config PR #17). Still to do in the irrigation project: re-measure per-zone flow rates with it.
+- Water tank probe is live (2026-11-20, config PR #17); per-zone flow rates re-measured with it (config PRs #20/#21, 2026-11-22).
   The ESPHome `eyegas` entry is the LPG gas bridge: do not delete it.
 - Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
 - DHCP reservations for the bulbs and switches (plus the Mika baby monitor plug at .150): list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
@@ -293,6 +294,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
 - 2026-11-22: "Git pull: restart if stopped" automation; Downstairs Light Switch 3 diagnosis (likely the downstairs Deco); Tuya re-pairing error 1108.
 - 2026-11-21: Water tank moved from the Tuya ultrasonic sensor ("Water Tenk 1", removed) to the ESPHome pressure probe `water-tank` (config PR #17, merged 2026-11-20). Tank automations, House Stats water cards and the water balance use it; the balance uses probe litres instead of 91.4 L per 1%.
 - 2026-11-20: Irrigation work moved to a separate garden and irrigation project (reminders there).
