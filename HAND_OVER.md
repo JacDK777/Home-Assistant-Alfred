@@ -278,7 +278,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 - Garage door was seen reporting "open, 100%" while shut on 2026-10-26; if the switch light drifts from the door again, check the door's reported position.
 - Bulbs: root cause is wall switches cutting power to smart bulbs. On 2026-11-16 Jacques chose switches-as-buttons for Great Room
   gang 1, Main Bedroom and Guest Bedroom (automations above); power cycling is off. Confirm it behaves well in daily use
-  (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) waits on merge.
+  (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) is merged (seen 2026-11-22).
   The four power-cycle automations are off, not deleted; delete them if Jacques agrees.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
