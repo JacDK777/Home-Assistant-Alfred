@@ -166,6 +166,11 @@ The answer has `awake`, `app`, `focused`, `on_screen` (text with its position) a
 `picture`. The screen text comes from `uiautomator dump`, which some apps and playing
 videos don't give; the picture still comes back then.
 
+It also needs the TV's address to stay right. When the TV moves (from its cable to
+Wi-Fi, or gets a new address from the router), Alfred's watchdog points the Android
+Debug Bridge entry at the address the TV's **Android TV Remote** entry in the same area
+now uses, and reloads it. A fixed address for the TV in the router avoids the move.
+
 ## Cost
 
 Alfred uses prompt caching. Your exposed-device list, the tool definitions and the conversation so
