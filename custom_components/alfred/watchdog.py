@@ -14,6 +14,9 @@ bring that entry back:
 - A Tuya Local bulb that stays off the network while its wall switch is on has
   probably fallen back into pairing mode. When Alfred has the Tuya and Wi-Fi
   settings, the watchdog re-adds it (pairing.py), at most twice per outage.
+- An Android Debug Bridge TV that can't be reached is pointed at the address its
+  Android TV Remote twin (the same TV, in the same area) now uses: a TV that moves
+  from its cable to Wi-Fi, or gets a new address, otherwise stays blind for good.
 - Everything else is reloaded, with a growing pause between attempts.
 
 The watchdog remembers what it did. When an entry comes back after a repair the
@@ -40,7 +43,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er, storage
+from homeassistant.helpers import device_registry as dr, entity_registry as er, storage
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
@@ -106,6 +109,9 @@ DERIVED_DOMAINS = frozenset(
 SKIPPED_DOMAINS = DEFAULT_IGNORED_DOMAINS | DERIVED_DOMAINS
 
 TUYA_LOCAL = "tuya_local"
+ANDROID_TV = "androidtv"
+ANDROID_TV_REMOTE = "androidtv_remote"
+ACTION_FOLLOW = "follow address"
 ACTION_RELOAD = "reload"
 ACTION_PAIR = "re-pair"
 # Re-pairing a device in pairing mode: how long to send, how often to try.
@@ -345,6 +351,7 @@ class Watchdog:
             async_scan_tuya_local,
         )
 
+        self._follow_android_tvs()
         found: dict[str, Any] = {}
         if any(
             not _tuya_local_connected(self.hass, entry)
@@ -434,6 +441,19 @@ class Watchdog:
         if to_pair and await self._async_pair(to_pair, now):
             changed = True
         if changed:
+            self._save()
+
+    def _follow_android_tvs(self) -> None:
+        """Point unreachable ADB TVs at the address their remote twin uses now."""
+        for entry, host in android_tv_moves(self.hass):
+            old = entry.data.get("host")
+            LOGGER.info("Watchdog: %s moved from %s to %s", entry.title, old, host)
+            title = host if entry.title == old else entry.title
+            self.hass.config_entries.async_update_entry(
+                entry, data={**entry.data, "host": host}, title=title
+            )
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+            self._log(entry, ACTION_FOLLOW, f"moved from {old} to {host}")
             self._save()
 
     async def _async_pair(
@@ -556,6 +576,56 @@ class Watchdog:
             },
             "ignored_integrations": sorted(SKIPPED_DOMAINS - {DOMAIN}),
         }
+
+
+def _entry_areas(hass: HomeAssistant, entry_id: str) -> set[str]:
+    return {
+        device.area_id
+        for device in dr.async_entries_for_config_entry(dr.async_get(hass), entry_id)
+        if device.area_id
+    }
+
+
+def android_tv_moves(hass: HomeAssistant) -> list[tuple[Any, str]]:
+    """ADB TV entries that can't connect, with the address to try instead.
+
+    The Android TV Remote integration finds its TV by name on the network and
+    keeps its address up to date; the Android Debug Bridge one does not. So an
+    ADB TV that can't connect, with exactly one connected Android TV Remote in
+    the same area at another address, is that TV at its new address.
+    """
+    remotes = [
+        entry
+        for entry in hass.config_entries.async_entries(ANDROID_TV_REMOTE)
+        if entry.state is ConfigEntryState.LOADED and entry.data.get("host")
+    ]
+    tvs = hass.config_entries.async_entries(ANDROID_TV)
+    in_use = {
+        entry.data.get("host")
+        for entry in tvs
+        if entry.state is ConfigEntryState.LOADED
+    }
+    moves = []
+    for entry in tvs:
+        if entry.disabled_by is not None or entry.state not in (
+            ConfigEntryState.SETUP_RETRY,
+            ConfigEntryState.SETUP_ERROR,
+        ):
+            continue
+        areas = _entry_areas(hass, entry.entry_id)
+        if not areas:
+            continue
+        hosts = {
+            remote.data["host"]
+            for remote in remotes
+            if _entry_areas(hass, remote.entry_id) & areas
+        }
+        if len(hosts) != 1:
+            continue
+        host = hosts.pop()
+        if host != entry.data.get("host") and host not in in_use:
+            moves.append((entry, host))
+    return moves
 
 
 def _local(value: str) -> str:

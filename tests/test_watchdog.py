@@ -7,7 +7,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, MockUser
 
 from homeassistant.components import persistent_notification
-from homeassistant.config_entries import ConfigEntryDisabler
+from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, llm
@@ -374,3 +374,75 @@ async def test_no_re_pair_without_settings_or_power(
         await watchdog.async_check()  # Pairing settings missing.
     start.assert_not_called()
     assert "pair_attempts" not in watchdog.issues[bulb.entry_id]
+
+
+def _tv_entry(
+    hass: HomeAssistant, domain: str, host: str, area: str, state: ConfigEntryState
+) -> MockConfigEntry:
+    entry = MockConfigEntry(domain=domain, title=host, data={"host": host})
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, state)
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(domain, host)},
+        suggested_area=area,
+    )
+    return entry
+
+
+async def test_follows_a_tv_to_its_new_address(
+    hass: HomeAssistant, setup_alfred
+) -> None:
+    """An ADB TV that can't connect moves to its Android TV Remote twin's address."""
+    adb = _tv_entry(
+        hass, "androidtv", "192.168.68.173", "Living Room", ConfigEntryState.SETUP_RETRY
+    )
+    _tv_entry(
+        hass,
+        "androidtv_remote",
+        "192.168.68.188",
+        "Living Room",
+        ConfigEntryState.LOADED,
+    )
+    # Another TV elsewhere is never a match.
+    _tv_entry(
+        hass,
+        "androidtv_remote",
+        "192.168.68.167",
+        "Master Bedroom",
+        ConfigEntryState.LOADED,
+    )
+    watchdog = async_get_watchdog(hass)
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        await watchdog.async_check()
+    reload.assert_called_once_with(adb.entry_id)
+    assert adb.data["host"] == "192.168.68.188"
+    assert adb.title == "192.168.68.188"
+    assert watchdog.status()["history"][-1]["outcome"] == (
+        "moved from 192.168.68.173 to 192.168.68.188"
+    )
+    for domain in ("androidtv", "androidtv_remote"):
+        for entry in hass.config_entries.async_entries(domain):
+            entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
+
+
+async def test_leaves_a_tv_alone_when_unsure(hass: HomeAssistant, setup_alfred) -> None:
+    """No move when it is connected, or two remotes share its area."""
+    ok = _tv_entry(hass, "androidtv", "192.168.68.10", "Den", ConfigEntryState.LOADED)
+    down = _tv_entry(
+        hass, "androidtv", "192.168.68.20", "Lounge", ConfigEntryState.SETUP_RETRY
+    )
+    for host, area in (
+        ("192.168.68.11", "Den"),
+        ("192.168.68.21", "Lounge"),
+        ("192.168.68.22", "Lounge"),
+    ):
+        _tv_entry(hass, "androidtv_remote", host, area, ConfigEntryState.LOADED)
+    with patch.object(hass.config_entries, "async_schedule_reload") as reload:
+        await async_get_watchdog(hass).async_check()
+    reload.assert_not_called()
+    assert ok.data["host"] == "192.168.68.10"
+    assert down.data["host"] == "192.168.68.20"
+    for domain in ("androidtv", "androidtv_remote"):
+        for entry in hass.config_entries.async_entries(domain):
+            entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
