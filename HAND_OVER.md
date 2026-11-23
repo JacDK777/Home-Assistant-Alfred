@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-22 (04:55)
+**Last updated:** 2026-11-23 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -76,6 +76,7 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   #29 (0.16.0) watchdog re-pairs a bulb by itself when it stays offline 10 min with its switch on.
   #31 (0.17.0) `alfred.tv`: presses keys, types, or opens an app or link on an Android TV over the Android Debug Bridge
   integration, then returns a fresh screenshot and the on-screen text (HA's own screenshot only refreshes every few minutes).
+  #36 (0.18.2, 2026-11-22) the watchdog follows an Android Debug Bridge TV to its new IP address.
   #33 (0.18.1, 2026-11-18) closes a Tuya Local setup left open for the device before adding it.
   #32 (0.18.0, 2026-11-16) `add_tuya_local_device`: adds a Smart Life device to Tuya Local by itself (key from the Tuya cloud
   integration, IP from the network) and can replace a dead device, taking over its entity IDs, name and area.
@@ -161,6 +162,9 @@ The same file lives in both GitHub repositories and in the Claude project's shar
     Sensor (no local copy) and an unnamed A60 bulb.
 - **Samsung aircons (3)**: probably SmartThings (cloud). Local options depend on the model number
   (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
+- **Comfee (Midea) aircon:** plan (2026-11-22) to control it locally with an ESP32 running ESPHome's Midea component on the
+  unit's USB port (ESP32 WROOM DevKit, 4-channel 3.3V↔5V level shifter, USB-A plug; Jacques buys from Micro Robotics or
+  ISP Home). Claude sends the wiring and ESPHome config once the parts arrive.
 - **TCL TVs (3)** via Chromecast/DLNA: Living Room TCL TV at 192.168.68.101, Bedroom TV at 192.168.68.167. Cast can turn
   them off but not on (they drop off Wi-Fi in standby). **Android TV Remote** integration is now added for both
   (`remote.living_room_tcl_tv` / `media_player.living_room_tcl_tv_2`, `remote.bedroom_tv` / `media_player.bedroom_tv`).
@@ -194,6 +198,8 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   device `eyegas` at 192.168.68.115 (the LPG gas Bluetooth bridge; keep it).
 - **Gas (LPG, 19 kg cylinder):** eyeGas meter = Mopeka Pro Check ("Pro Check 8B5E"), read by the built-in Mopeka
   integration; level `sensor.outside_eyegas_bridge_lpg_level` (through an ESP32 Bluetooth proxy, set up 2026-11-10).
+  Since 2026-11-22 the gauge, history and alert read only from the ESPHome gas bridge; the separate Bluetooth "Pro Check 8B5E"
+  Mopeka entry is unused and Jacques can delete it (Settings → Devices & services → Mopeka).
   Readings fail when the sensor can't see through the cylinder: keep the base clean, sensor centred, cylinder level.
   Raw readings jump around (junk 6%/41%/100% values), so the Gas tab and the alert use `sensor.gas_level_filtered`.
 - **Solar:** Sunsynk integration (battery held at 50% overnight for outages, by choice). **House Stats** dashboard
@@ -262,11 +268,13 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
   the 2-minute re-sync above should stop that. Confirm the next press works (user).
 - Alfred app: waiting on the user to create the Azure Speech key and try the Willem and offline voices (2026-11-05).
 - Kitchen DL1: no bulb fitted; entity disabled until one is (see section 2).
-- Downstairs Light Switch 3 (IP .144) is offline: off the Wi-Fi and offline in the Tuya cloud too, so HA's settings are fine. On 2026-11-21
-  Pantry Light 1, Kitchen DL 1 and the water tank switch dropped at the same moment, so the downstairs Deco is the likely cause.
-  Next: check that Deco in the app and restart it, then power-cycle the switch at its breaker (which breaker is unknown).
-  Thread "Fix downstairs 3-gang switch disconnecting" is waiting on Jacques.
-  Jacques says wall switches disconnecting is a big problem (2026-11-17); the voice app thread asked which switches drop off and whether they still work by hand.
+- Wi-Fi drop-outs: on 2026-11-21 and 2026-11-22 (17:52) many Tuya devices (wall switches, bulbs, Ginny) dropped at once. Both drops
+  came right after Home Assistant restarted itself following a config merge (Git pull restarts HA). Bulbs come back after power
+  returns, but the wall switches, Ginny and similar devices lock up and need a power cycle. All switches and bulbs were back on
+  2026-11-22 20:39. Proposed: apply config merges with a restart at 3 AM instead of straight away, and test it; waiting on Jacques's go.
+- Still offline on 2026-11-22: Ginny (re-dock or power cycle), baby camera and its Camera On/Off plug, Ring (may need signing in again),
+  Tuya cloud devices (blinds motor, two cloud bulbs, temperature/humidity sensor; Tuya cloud failing, probably error 1108 below).
+- Braai Room DL 2 was deleted by accident with Water Tenk 1 on 2026-11-22 and re-added with its old name and group. Braai Room DL 1 has no bulb.
 - Water tank probe is live (2026-11-20, config PR #17); per-zone flow rates re-measured with it (config PRs #20/#21, 2026-11-22).
   The ESPHome `eyegas` entry is the LPG gas bridge: do not delete it.
 - Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
@@ -294,6 +302,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-23: Alfred 0.18.2 (PR #36); Wi-Fi drop-outs traced to HA restarts after merges (3 AM restart proposed); downstairs switches back; Water Tenk 1 removed, Braai Room DL 2 re-added; gas reads from the ESPHome bridge only; Comfee aircon ESP32 plan.
 - 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
 - 2026-11-22: "Git pull: restart if stopped" automation; Downstairs Light Switch 3 diagnosis (likely the downstairs Deco); Tuya re-pairing error 1108.
 - 2026-11-21: Water tank moved from the Tuya ultrasonic sensor ("Water Tenk 1", removed) to the ESPHome pressure probe `water-tank` (config PR #17, merged 2026-11-20). Tank automations, House Stats water cards and the water balance use it; the balance uses probe litres instead of 91.4 L per 1%.
