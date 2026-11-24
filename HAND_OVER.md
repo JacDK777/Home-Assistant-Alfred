@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-23 (04:55)
+**Last updated:** 2026-11-24 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -49,6 +49,9 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   at 4110 K) and Tania's office switch as a button. `irrigation.yaml` (PRs #15/#16): Home Assistant runs all Rain Bird watering
   (see section 5). `irrigation_runs.yaml`: measures the litres of every valve run from the tank probe
   (event `irrigation_run_measured`, logbook "Irrigation run", `sensor.irrigation_<zone>_litres_per_10_min`).
+  `powercalc.yaml` (PR #24, needs the Powercalc integration from the Marketplace): estimated watts per room from on/off states
+  (`sensor.<room>_estimated_power`; typical values, not measured). `oven_energy.yaml` (PR #25): real oven kWh worked out from
+  `sensor.oven_mains_1_power` (the CBI switch's own energy counter undercounts), `sensor.oven_energy_today` / `_month`.
 - Contents: `configuration.yaml`, `blueprints/`, `esphome/` (empty), `www/community/` (HACS frontend
   cards: button-card, mushroom, template-entity-row, tv-card, flex-horseshoe, atomic-calendar-revive,
   HTML Jinja2 template card).
@@ -206,7 +209,9 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   (`house-stats`, created 2026-11-10): gas gauge and history, Electricity (Sunsynk power flow card in Lite style,
   daily autarky chart), Water tab, appliance power. **Home Energy Plan** dashboard (`home-energy-plan`, 2026-11-18): schematic
   floor plan with live watts per room. Only 5 plugs report power (oven mains, heat mat, plant fan, baby camera plug, Mika baby
-  monitor); aircon power sensors read 0 W. The layout is made up from HA areas until Jacques shares a real floor plan.
+  monitor); aircon power sensors read 0 W. Since 2026-11-23 the plan follows Jacques's own pins (architect drawings): Powercalc room
+  estimates shown with "~", oven kWh today, chandelier, gas canister and geyser, dishwasher plug, chips that glow when on, an
+  "On now" row, and a phone layout (floors stacked).
 - **Mika baby monitor** plug (`switch.mika_baby_monitor`, Tuya Local at 192.168.68.150, added 2026-11-18), tile on Main Dash (Guest Rooms).
 - **TV Light** (MohuanLED Bluetooth strip, shows as BJ_LED_M): BJ_LED BLE custom integration from the Marketplace
   (2026-11-10). It doesn't report its real state. Only one connection at a time, so close the MohuanLED app.
@@ -277,7 +282,8 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 - Braai Room DL 2 was deleted by accident with Water Tenk 1 on 2026-11-22 and re-added with its old name and group. Braai Room DL 1 has no bulb.
 - Water tank probe is live (2026-11-20, config PR #17); per-zone flow rates re-measured with it (config PRs #20/#21, 2026-11-22).
   The ESPHome `eyegas` entry is the LPG gas bridge: do not delete it.
-- Home Energy Plan: waiting on a real floor plan from Jacques; it hasn't been checked on screen yet.
+- Home Energy Plan: phone layout done 2026-11-23; waiting on Jacques to say if any chip label is still cut off on his phone.
+- Config PR #23 (irrigation run logger fix: wrong tank sensor id) is open, from the garden project; waiting on Jacques to merge.
 - DHCP reservations for the bulbs and switches (plus the Mika baby monitor plug at .150): list at `tuya-local/dhcp-reservations.md` in the project files, for Jacques to add in the Deco app.
   The Tuya IoT Core free plan needs renewing every few months (error 28841002 means expired; renewed 2026-11-10). Since about
   2026-11-21 the watchdog's re-pairing fails with error 1108 ("uri path invalid"): renew or check the IoT project.
@@ -302,6 +308,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-24: Config PRs #24 (Powercalc room estimates) and #25 (oven kWh) merged; Home Energy Plan reworked ("On now", glowing chips, phone layout); config PR #23 open.
 - 2026-11-23: Alfred 0.18.2 (PR #36); Wi-Fi drop-outs traced to HA restarts after merges (3 AM restart proposed); downstairs switches back; Water Tenk 1 removed, Braai Room DL 2 re-added; gas reads from the ESPHome bridge only; Comfee aircon ESP32 plan.
 - 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
 - 2026-11-22: "Git pull: restart if stopped" automation; Downstairs Light Switch 3 diagnosis (likely the downstairs Deco); Tuya re-pairing error 1108.
