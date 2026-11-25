@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-24 (04:55)
+**Last updated:** 2026-11-25 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -267,6 +267,9 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 - Gas: double echoes (about 650 mm instead of 325 mm) still happen; config PR #12 (merged 2026-11-17) halves impossible distances,
   so the gauge reads correctly (69%, about 13.1 kg on 2026-11-17; battery 94%). Optional: re-seat the sensor dead centre on a clean spot.
+- Gas sensor silent since 2026-11-20: its CR2032 went flat in 6 days (fitted 2026-11-14; the cell before also dropped fast), so
+  something drains it. The bridge is fine. Jacques to check for moisture or corrosion inside, fit a name-brand cell and remount dead
+  centre; then watch the battery for a day or two. If it falls more than a few percent a day, it's a warranty claim with eyeGas.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
 - Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
@@ -308,6 +311,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-25: Gas sensor found silent since 2026-11-20 (battery drained in 6 days; check at the tank, possible warranty claim).
 - 2026-11-24: Config PRs #24 (Powercalc room estimates) and #25 (oven kWh) merged; Home Energy Plan reworked ("On now", glowing chips, phone layout); config PR #23 open.
 - 2026-11-23: Alfred 0.18.2 (PR #36); Wi-Fi drop-outs traced to HA restarts after merges (3 AM restart proposed); downstairs switches back; Water Tenk 1 removed, Braai Room DL 2 re-added; gas reads from the ESPHome bridge only; Comfee aircon ESP32 plan.
 - 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
