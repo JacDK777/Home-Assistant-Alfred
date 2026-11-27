@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-25 (04:55)
+**Last updated:** 2026-11-27 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -297,6 +297,9 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
   gang 1, Main Bedroom and Guest Bedroom (automations above); power cycling is off. Confirm it behaves well in daily use
   (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) is merged (seen 2026-11-22).
   The four power-cycle automations are off, not deleted; delete them if Jacques agrees.
+- Main Bedroom wall switch backlight flashed at 23:35 on 2026-11-25/26 although the backlight is set off (locally and in Smart Life).
+  HA and Alfred didn't touch it; likely the switch's firmware flashing while it reconnects. Jacques can check for a firmware update
+  in Smart Life; note the times if it recurs so a pattern (Wi-Fi drops, router updates) can be checked.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
 - Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
@@ -311,6 +314,7 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-27: Main Bedroom switch backlight flash looked into (switch firmware, not HA).
 - 2026-11-25: Gas sensor found silent since 2026-11-20 (battery drained in 6 days; check at the tank, possible warranty claim).
 - 2026-11-24: Config PRs #24 (Powercalc room estimates) and #25 (oven kWh) merged; Home Energy Plan reworked ("On now", glowing chips, phone layout); config PR #23 open.
 - 2026-11-23: Alfred 0.18.2 (PR #36); Wi-Fi drop-outs traced to HA restarts after merges (3 AM restart proposed); downstairs switches back; Water Tenk 1 removed, Braai Room DL 2 re-added; gas reads from the ESPHome bridge only; Comfee aircon ESP32 plan.
