@@ -4,7 +4,7 @@ Everything someone (a person or Claude) needs to pick up managing this Home Assi
 The same file lives in both GitHub repositories and in the Claude project's shared files at
 `handover/HAND_OVER.md`. A daily scheduled task refreshes it when something has changed.
 
-**Last updated:** 2026-11-24 (04:55)
+**Last updated:** 2026-11-28 (04:55)
 
 > **Passwords and tokens are not in this file.** They are kept only in the Claude project's
 > shared files at `handover/credentials.md`, which is never committed to git. This file only
@@ -167,7 +167,9 @@ The same file lives in both GitHub repositories and in the Claude project's shar
   (climate_ip for older Wi-Fi units, ESPHome samsung_ac + RS485 for WindFree). Model number not yet given.
 - **Comfee (Midea) aircon:** plan (2026-11-22) to control it locally with an ESP32 running ESPHome's Midea component on the
   unit's USB port (ESP32 WROOM DevKit, 4-channel 3.3V↔5V level shifter, USB-A plug; Jacques buys from Micro Robotics or
-  ISP Home). Claude sends the wiring and ESPHome config once the parts arrive.
+  ISP Home). Claude sends the wiring and ESPHome config once the parts arrive. As of 2026-11-27 it's a planned purchase: a
+  9000 BTU Comfee inverter for the JDK study (13 m², Bedroom 3 on the plan), about R5,499 at Takealot plus install; ESP32 parts
+  about R200 (plus Dupont jumpers; soldering needed for the level shifter).
 - **TCL TVs (3)** via Chromecast/DLNA: Living Room TCL TV at 192.168.68.101, Bedroom TV at 192.168.68.167. Cast can turn
   them off but not on (they drop off Wi-Fi in standby). **Android TV Remote** integration is now added for both
   (`remote.living_room_tcl_tv` / `media_player.living_room_tcl_tv_2`, `remote.bedroom_tv` / `media_player.bedroom_tv`).
@@ -267,6 +269,9 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 - Gas: double echoes (about 650 mm instead of 325 mm) still happen; config PR #12 (merged 2026-11-17) halves impossible distances,
   so the gauge reads correctly (69%, about 13.1 kg on 2026-11-17; battery 94%). Optional: re-seat the sensor dead centre on a clean spot.
+- Gas sensor silent since 2026-11-20: its CR2032 went flat in 6 days (fitted 2026-11-14; the cell before also dropped fast), so
+  something drains it. The bridge is fine. Jacques to check for moisture or corrosion inside, fit a name-brand cell and remount dead
+  centre; then watch the battery for a day or two. If it falls more than a few percent a day, it's a warranty claim with eyeGas.
 - Delete the dead helper `light.kitchen_grow_domes_socket_1` (no longer used).
 - TVs can't be turned on from HA (see section 5).
 - Garage switch: back online (seen 2026-11-08). On 2026-11-08 a press did nothing because the switch was on while the door was shut;
@@ -294,6 +299,9 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
   gang 1, Main Bedroom and Guest Bedroom (automations above); power cycling is off. Confirm it behaves well in daily use
   (Tania's Office got the same on 2026-11-18). Alfred app PR #25 (Alfred diagnoses offline bulbs instead of power cycling) is merged (seen 2026-11-22).
   The four power-cycle automations are off, not deleted; delete them if Jacques agrees.
+- Main Bedroom wall switch backlight flashed at 23:35 on 2026-11-25/26 although the backlight is set off (locally and in Smart Life).
+  HA and Alfred didn't touch it; likely the switch's firmware flashing while it reconnects. Jacques can check for a firmware update
+  in Smart Life; note the times if it recurs so a pattern (Wi-Fi drops, router updates) can be checked.
 - Remotes: DStv Sport button doesn't open DStv (needs the DStv app ID) and the Keyboard doesn't type yet;
   that thread was closed on 2026-11-08 (DStv Sport now has its own script). Optional restyle of both remotes offered.
 - Load Shedding: area "Malmesbury (12)" has a legacy v2 ID and is skipped until re-added.
@@ -308,6 +316,9 @@ and **TV Light follows Living Room TV** (`automation.tv_light_follows_living_roo
 
 ## 8. Change log
 
+- 2026-11-28: Comfee aircon: 9000 BTU unit chosen for the JDK study; ESP32 parts list given.
+- 2026-11-27: Main Bedroom switch backlight flash looked into (switch firmware, not HA).
+- 2026-11-25: Gas sensor found silent since 2026-11-20 (battery drained in 6 days; check at the tank, possible warranty claim).
 - 2026-11-24: Config PRs #24 (Powercalc room estimates) and #25 (oven kWh) merged; Home Energy Plan reworked ("On now", glowing chips, phone layout); config PR #23 open.
 - 2026-11-23: Alfred 0.18.2 (PR #36); Wi-Fi drop-outs traced to HA restarts after merges (3 AM restart proposed); downstairs switches back; Water Tenk 1 removed, Braai Room DL 2 re-added; gas reads from the ESPHome bridge only; Comfee aircon ESP32 plan.
 - 2026-11-22: Irrigation run logger (`packages/irrigation_runs.yaml`, config PR #20): each valve run's litres measured from the tank probe, 15 min after the valve closes. Measured per 10-min run: Front Gardens ~525 L, Back Yard ~490 L, Front Grass ~420 L, tank fill ~380 L in. Water stats use the measured flow rates (PR #21, Front Grass 38 L/min).
